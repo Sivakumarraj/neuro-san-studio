@@ -21,6 +21,9 @@
     #
     # Experimental and research
     #
+    # Set the following agent network to true after installing its extra dependencies:
+    # pip install -r coded_tools/experimental/decision_prescriptor/requirements.txt
+    "experimental/decision_prescriptor.hocon": false,
     "experimental/mdap_decomposer.hocon": true,
     "experimental/copy_cat.hocon": true,
     "experimental/kwik_agents.hocon": false,

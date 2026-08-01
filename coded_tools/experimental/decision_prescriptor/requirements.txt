@@ -1,0 +1,4 @@
+# Tool-specific dependency for the decision_prescriptor agent network.
+# The surrogate fit, the NSGA-II search and the SVG rendering are all built on
+# numpy alone; no optimization or plotting library is required.
+numpy>=1.26

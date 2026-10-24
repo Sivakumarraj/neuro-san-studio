@@ -135,10 +135,16 @@ class EvolvePrescriptors(CodedTool):
             [network.actions(weights, network_context).mean(axis=0) for weights in result.get("front_genes")[keep]]
         )
 
+        # The report draws this series as "dominated", so keep only the final population's
+        # members that the archived front beats. select_spread can leave non-dominated
+        # members out of the displayed front, and drawing those gray would say they were beaten.
+        population_objectives: np.ndarray = result.get("objectives")
+        beaten: np.ndarray = ParetoRanking.beaten_by(population_objectives, front_objectives)
+
         sly_data[DecisionKeys.RESULT] = {
             "front": shown_front,
             "actions": shown_actions,
-            "population": result.get("objectives") * signs,
+            "population": population_objectives[beaten] * signs,
             "hypervolume_history": result.get("hypervolume_history"),
             "archive_size": int(front.shape[0]),
             "generations": generations,

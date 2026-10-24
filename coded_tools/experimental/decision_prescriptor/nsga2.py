@@ -111,24 +111,12 @@ class Nsga2:
         num_objectives: int = objectives.shape[1]
         reference: np.ndarray = np.max(objectives, axis=0) + 1.0
 
-        # For three or more objectives, fix the Monte Carlo sample set once. Reusing
-        # the same points every generation is what makes the history exactly
-        # non-decreasing instead of merely trending upward: a sample that is dominated
-        # once stays dominated, because the archive's dominated region only grows.
-        hypervolume_samples: np.ndarray | None = None
-        sample_box_volume: float | None = None
-        if num_objectives > 2:
-            sample_lower: np.ndarray = np.min(objectives, axis=0)
-            sample_box_volume = float(np.prod(reference - sample_lower))
-            hypervolume_samples = rng.uniform(
-                low=sample_lower, high=reference, size=(Hypervolume.DEFAULT_SAMPLES, num_objectives)
-            )
-
         archive_genes, archive_objectives = Nsga2.update_archive(
             np.empty((0, num_genes)), np.empty((0, num_objectives)), population, objectives
         )
 
-        history: list[float] = []
+        # Each generation's archive, measured once the run is over: see hypervolume_history().
+        archive_history: list[np.ndarray] = []
 
         for _ in range(generations):
             ranks, crowding = ParetoRanking.rank_and_crowding(objectives)
@@ -152,13 +140,52 @@ class Nsga2:
             archive_genes, archive_objectives = Nsga2.update_archive(
                 archive_genes, archive_objectives, population, objectives
             )
-            history.append(Hypervolume.compute(archive_objectives, reference, hypervolume_samples, sample_box_volume))
+            archive_history.append(archive_objectives)
 
         return {
             "front_genes": archive_genes,
             "front_objectives": archive_objectives,
             "population": population,
             "objectives": objectives,
-            "hypervolume_history": np.array(history, dtype=float),
+            "hypervolume_history": Nsga2.hypervolume_history(archive_history, reference, seed),
             "reference": reference,
         }
+
+    @staticmethod
+    def hypervolume_history(archives: list[np.ndarray], reference: np.ndarray, seed: int = 0) -> np.ndarray:
+        """
+        Hypervolume of each generation's archive against one fixed reference point.
+
+        Exact for one or two objectives. For three or more it is a Monte Carlo estimate
+        against one fixed sample set, which keeps the history exactly non-decreasing: a
+        sample that is dominated once stays dominated, because the archive's dominated
+        region only grows.
+
+        The sample box runs from the final archive's per-objective minimum up to the
+        reference. That corner bounds every archive of the run, because a point holding an
+        objective's minimum can only be displaced by one that ties it. A box taken from the
+        first population instead leaves later progress below its corner uncounted, which
+        flattens the curve.
+
+        :param archives: Each generation's archive objectives, in order, minimized.
+        :param reference: Worst-case point that bounds the volume.
+        :param seed: Seed for the Monte Carlo samples.
+        :return: Hypervolume per generation, shape (len(archives),).
+        """
+        if not archives:
+            return np.array([], dtype=float)
+
+        samples: np.ndarray | None = None
+        box_volume: float | None = None
+        num_objectives: int = archives[-1].shape[1]
+        if num_objectives > 2:
+            sample_lower: np.ndarray = np.min(archives[-1], axis=0)
+            box_volume = float(np.prod(reference - sample_lower))
+            # A generator of its own, so measuring progress never shifts the search's random stream.
+            samples = np.random.default_rng([seed, 1]).uniform(
+                low=sample_lower, high=reference, size=(Hypervolume.DEFAULT_SAMPLES, num_objectives)
+            )
+
+        return np.array(
+            [Hypervolume.compute(archive, reference, samples, box_volume) for archive in archives], dtype=float
+        )

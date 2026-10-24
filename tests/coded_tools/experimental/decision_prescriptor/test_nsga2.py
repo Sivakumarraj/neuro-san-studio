@@ -113,6 +113,21 @@ class TestNsga2(TestCase):
                 f"hypervolume decreased with {num_objectives} objectives",
             )
 
+    def test_hypervolume_history_counts_progress_below_the_first_archive(self):
+        """
+        With three objectives, a later archive that improves below every minimum of the first
+        must score higher. A sample box fixed at the first archive's minima scores both the
+        same, because every sample inside it is dominated by either archive.
+        """
+        reference = np.full(3, 10.0)
+        first = np.array([[5.0, 5.0, 5.0]])
+        later = np.array([[1.0, 1.0, 1.0]])
+        history = Nsga2.hypervolume_history([first, later], reference)
+        # Every sample in the box [1, 10]^3 is dominated by (1, 1, 1): exactly 9^3.
+        self.assertAlmostEqual(float(history[1]), 729.0)
+        # (5, 5, 5) dominates 5^3 of it; the Monte Carlo estimate lands near that.
+        self.assertAlmostEqual(float(history[0]), 125.0, delta=20.0)
+
     def test_the_returned_front_is_actually_non_dominated(self):
         """Nothing on the reported front may dominate anything else on it."""
         num_genes = 5

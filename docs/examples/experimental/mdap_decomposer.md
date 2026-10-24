@@ -103,8 +103,11 @@ to call back out to the agents available in the network:
 
 Within this implementation there is also an example of using first-to-K voting.
 In the future we may augment this with different voting strategies selectable by parameters.
-For instance the original MAKER paper uses ahead-by-K voting, which is not yet implemented
-for this example.
+For instance the original MAKER paper uses ahead-by-K voting. `FirstToAheadByKVoter` implements it
+as a drop-in `Voter`: it asks the discriminator in rounds until one candidate leads every other
+candidate by K votes, asking each round only for as many votes as could still decide, and stops
+at `max_votes` calls. Malformed or out-of-range votes are logged and discarded. It is not yet
+selectable from the tool arguments; `NeuroSanSolver` still uses `FirstToKVoter`.
 
 #### Tool Arguments and Parameters
 

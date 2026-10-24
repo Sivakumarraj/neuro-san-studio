@@ -81,6 +81,25 @@ class ParetoRanking:
         return mask
 
     @staticmethod
+    def beaten_by(points: np.ndarray, front: np.ndarray) -> np.ndarray:
+        """
+        Flag the points that at least one front member dominates.
+
+        A point equal to a front member is not beaten, so a non-dominated solution is
+        never reported as dominated merely because it was left out of a display.
+
+        :param points: Array of shape (num_points, num_objectives), minimized.
+        :param front: Array of shape (num_front, num_objectives), minimized.
+        :return: Boolean mask over points, True where some front member dominates the point.
+        """
+        if points.shape[0] == 0 or front.shape[0] == 0:
+            return np.zeros(points.shape[0], dtype=bool)
+
+        no_worse: np.ndarray = np.all(front[:, None, :] <= points[None, :, :], axis=2)
+        strictly_better: np.ndarray = np.any(front[:, None, :] < points[None, :, :], axis=2)
+        return np.any(no_worse & strictly_better, axis=0)
+
+    @staticmethod
     def fast_non_dominated_sort(objectives: np.ndarray) -> list[list[int]]:
         """
         Partition a population into Pareto fronts.

@@ -58,6 +58,8 @@ class RidgeSurrogate:
 
         Uses (X'X + alpha*I)^-1 X'Y on standardized features with an unpenalized
         bias column appended, which is why the identity block skips that column.
+        With alpha = 0 it is ordinary least squares, solved so that a rank-deficient
+        design still fits.
 
         :param features: Array of shape (num_rows, num_features).
         :param targets: Array of shape (num_rows, num_targets).
@@ -78,6 +80,13 @@ class RidgeSurrogate:
 
         design: np.ndarray = self._design_matrix(features)
         num_columns: int = design.shape[1]
+
+        if self.alpha == 0.0:
+            # With no penalty the normal equations are singular whenever the design is
+            # rank-deficient, as it is when a feature column is constant (standardized to
+            # zeros). Least squares handles that, giving such a column a zero coefficient.
+            self.coefficients = np.linalg.lstsq(design, targets, rcond=None)[0]
+            return self
 
         penalty: np.ndarray = self.alpha * np.eye(num_columns)
         # Do not penalize the bias column: shrinking the intercept would bias predictions.

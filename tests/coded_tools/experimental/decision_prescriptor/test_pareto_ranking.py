@@ -125,6 +125,16 @@ class TestParetoRanking(TestCase):
         self.assertIn(0, chosen.tolist())
         self.assertIn(29, chosen.tolist())
 
+    def test_beaten_by_flags_only_points_a_front_member_dominates(self):
+        """
+        A point equal to a front member, or trading off against every member, is not beaten,
+        so a non-dominated strategy is never reported as dominated.
+        """
+        front = np.array([[1.0, 4.0], [3.0, 2.0]])
+        points = np.array([[2.0, 5.0], [1.0, 4.0], [0.5, 6.0], [4.0, 3.0]])
+        np.testing.assert_array_equal(ParetoRanking.beaten_by(points, front), [True, False, False, True])
+        self.assertEqual(ParetoRanking.beaten_by(np.empty((0, 2)), front).shape, (0,))
+
     def test_select_spread_is_a_no_op_when_the_front_already_fits(self):
         """Asking for more points than exist returns them all."""
         objectives = np.array([[0.0, 1.0], [1.0, 0.0]])

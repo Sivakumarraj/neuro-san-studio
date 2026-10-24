@@ -70,6 +70,16 @@ class TestRidgeSurrogate(TestCase):
         surrogate = RidgeSurrogate(alpha=1.0).fit(features, targets)
         self.assertEqual(float(surrogate.r_squared(features, targets)[0]), 0.0)
 
+    def test_zero_alpha_fits_a_constant_column_instead_of_failing(self):
+        """
+        Without a penalty, a constant feature column makes the normal equations singular.
+        The fit must still recover the relationship carried by the other column.
+        """
+        features = np.array([[1.0, 5.0], [2.0, 5.0], [3.0, 5.0], [4.0, 5.0]])
+        targets = 2.0 * features[:, :1] + 1.0
+        surrogate = RidgeSurrogate(alpha=0.0).fit(features, targets)
+        np.testing.assert_allclose(surrogate.predict(features), targets, atol=1e-9)
+
     def test_predict_before_fit_is_refused(self):
         """Predicting from an unfitted model would silently return nonsense."""
         with self.assertRaises(RuntimeError):

@@ -88,7 +88,7 @@ class RenderParetoReport(CodedTool):
                 handle.write(document)
         except OSError as error:
             logger.error("Could not write the trade-off report to %s: %s", output_path, error)
-            return f"Error writing the report: {error}"
+            return f"Error: could not write the report: {error}"
 
         logger.info("Wrote the trade-off report to %s", output_path)
         return (

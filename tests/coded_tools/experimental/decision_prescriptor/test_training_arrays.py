@@ -48,6 +48,16 @@ class TestTrainingArrays(TestCase):
             TrainingArrays.build(rows, ["a"], ["b"], [])
         self.assertIn("row 1", str(caught.exception))
 
+    def test_names_the_row_and_field_with_a_non_finite_value(self):
+        """NaN and infinity convert to float cleanly, so they need their own check."""
+        for bad_value in (float("nan"), float("inf")):
+            rows = [{"a": 1.0, "b": 2.0}, {"a": 3.0, "b": bad_value}]
+            with self.assertRaises(ValueError) as caught:
+                TrainingArrays.build(rows, ["a"], ["b"], [])
+            message = str(caught.exception)
+            self.assertIn("row 1", message)
+            self.assertIn("b", message)
+
     def test_empty_input_is_refused(self):
         """There is nothing to fit on, so say so rather than failing later."""
         with self.assertRaises(ValueError):

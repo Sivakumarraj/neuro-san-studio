@@ -70,6 +70,10 @@ The R² per outcome is reported back to the user rather than hidden. **A prescri
 weak surrogate has optimized a bad map of the world**, and the front will look exactly as precise
 either way. If any outcome scores below 0.5, the front man is instructed to say so plainly.
 
+The R² is measured in-sample, on the same records the surrogate was fitted on. That makes it an upper
+bound on how well the surrogate generalizes: a low score is a reliable warning, while a high score on a
+small dataset can still hide overfitting.
+
 ### Why evolve the policy
 
 A prescriptor is a small neural network mapping context to action. Its weights are never trained by
@@ -157,8 +161,9 @@ reads correctly straight from disk. It contains:
 * **A data table** — the accessibility path for the charts, and the way to read exact values.
 
 The two series colors, blue and orange, were checked for colorblind separation and contrast on both
-the light and dark surfaces. Dark mode is a selected set of steps, not an inversion, and follows both the
-OS setting and an explicit theme toggle.
+the light and dark surfaces. Dark mode is a selected set of steps, not an inversion. It follows the OS
+setting, and a page that embeds the report can force either theme with a `data-theme` attribute on the
+root element.
 
 ### Guard rails
 
@@ -206,7 +211,7 @@ It models delivery staffing across a portfolio of engagements, with two conflict
 
 An optimizer that returned a single answer here would be hiding one of those exchanges.
 
-A typical run with the default settings fits the surrogate at R² ≈ 0.97 on all three outcomes and finds
+A typical run with the default settings fits the surrogate at an in-sample R² ≈ 0.97 on all three outcomes and finds
 around 1,200 non-dominated strategies in about ten seconds, spanning roughly:
 
 | Outcome | Range across the front |
@@ -224,7 +229,8 @@ Here are 200 past campaigns. Context is audience_size and season, the decisions 
 budget and channel_mix, and I want to maximize conversions while minimizing cost_per_acquisition.
 ```
 
-Every record must be a flat object of field name to number, and `maximize` needs one entry per outcome.
+Every record must be a flat object of field name to a finite number, and `maximize` needs one entry per
+outcome.
 
 ---
 

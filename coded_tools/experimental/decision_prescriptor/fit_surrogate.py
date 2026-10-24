@@ -80,7 +80,8 @@ class FitSurrogate(CodedTool):
             else " Fit is strong enough to search against."
         )
         logger.info("Fitted surrogate on %d records, weakest R-squared %.3f", len(rows), weakest)
-        return f"Surrogate fitted on {len(rows)} records (alpha={alpha:g}). {reported}.{caveat}"
+        # Scored on the rows it was fitted on, so this is an upper bound on how well it generalizes.
+        return f"Surrogate fitted on {len(rows)} records (alpha={alpha:g}). In-sample {reported}.{caveat}"
 
     async def async_invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
         """

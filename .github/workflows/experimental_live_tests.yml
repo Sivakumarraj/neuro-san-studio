@@ -1,0 +1,47 @@
+name: Experimental live tests
+
+# Runs the experimental networks' integration fixtures against real model calls:
+# the Decision Prescriptor, both MDAP decomposer fixtures and copy_cat.
+on:
+  push:
+    branches:
+      - ci/experimental-live-tests
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check that the OpenAI key is set
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Add OPENAI_API_KEY under Settings > Secrets and variables > Actions, then re-run this job."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Run the experimental networks against real model calls
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_TOOL_PATH: coded_tools/
+          AGENT_MANIFEST_FILE: registries/manifest.hocon
+          AGENT_TOOLBOX_INFO_FILE: neuro_san_studio/toolbox/toolbox_info.hocon
+          PYTHONPATH: .
+        run: pytest --capture=no -o addopts="" -m integration_experimental

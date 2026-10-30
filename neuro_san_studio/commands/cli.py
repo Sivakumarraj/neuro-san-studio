@@ -31,6 +31,7 @@ import typer
 from neuro_san_studio.agent_network_consultant.consultant_options import ConsultantOptions
 from neuro_san_studio.commands.project_environment import ProjectEnvironment
 from neuro_san_studio.commands.run import NeuroSanRunner
+from neuro_san_studio.network_score.score_options import ScoreOptions
 
 
 class NeuroSanStudioCli:  # pylint: disable=too-few-public-methods
@@ -470,6 +471,107 @@ class NeuroSanStudioCli:  # pylint: disable=too-few-public-methods
                     only_fixtures=selected_fixtures or None,
                     max_iterations=max_iterations,
                     success_ratio=success_ratio,
+                )
+            )
+        )
+
+    @staticmethod
+    def _run_score(options: ScoreOptions) -> int:
+        """
+        Run `ns score` in a worker process with the project's direct-test environment.
+
+        This mirrors _run_consultant(): the worker gets the environment Neuro SAN's direct fixture driver needs, and
+        the caller's own environment is left unchanged.
+
+        :param options: The typed score option values parsed by Typer.
+        :return: The worker process exit code.
+        :raises OSError: If the worker process cannot be started.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from neuro_san_studio.agent_network_consultant.network_test_environment import NetworkTestEnvironment
+
+        environment_scope = NetworkTestEnvironment()
+        child_environment = environment_scope.create()
+        owned_thinking_directory = environment_scope.owned_thinking_directory()
+        try:
+            command = [
+                sys.executable,
+                "-m",
+                "neuro_san_studio.network_score.network_score_runner",
+                # `_asdict()` is the documented serialization API for a NamedTuple. The options hold only paths,
+                # file names and a count, so passing them on the command line exposes no free-form text.
+                json.dumps(options._asdict()),
+            ]
+            completed_process: subprocess.CompletedProcess[bytes] = subprocess.run(
+                command,
+                env=child_environment,
+                check=False,
+            )
+            # Convert a POSIX signal status such as -15 into the conventional shell status 143.
+            if completed_process.returncode < 0:
+                return 128 - completed_process.returncode
+            return completed_process.returncode
+        finally:
+            NetworkTestEnvironment.cleanup_owned_thinking_directory(owned_thinking_directory)
+
+    @staticmethod
+    @app.command(
+        "score",
+        help="Score a network on its fixtures over every repeat, with cost, and optionally compare a second network.",
+        context_settings={"allow_extra_args": True},
+    )
+    def _score_command(  # pylint: disable=too-many-arguments
+        ctx: typer.Context,
+        *,
+        hocon_file: str = typer.Option(
+            ...,
+            "--hocon-file",
+            help="Network HOCON, relative to registries/, whose fixtures are run.",
+        ),
+        compare_hocon_file: str | None = typer.Option(
+            None,
+            "--compare-hocon-file",
+            help="Second network HOCON, relative to registries/, run on the same fixtures and compared.",
+        ),
+        repeats: int = typer.Option(
+            ScoreOptions.DEFAULT_REPEATS,
+            "--repeats",
+            min=1,
+            help="Attempts per fixture; every attempt runs, with no early stop.",
+        ),
+        only_fixtures: list[str] | None = typer.Option(
+            None,
+            "--only-fixtures",
+            help="Run only a space-separated list of exact fixture filenames, including .hocon.",
+        ),
+        output: str | None = typer.Option(
+            None,
+            "--output",
+            help="Write the full report as JSON to this file.",
+        ),
+    ) -> None:
+        """Score one network, or compare two, on the first network's fixtures.
+
+        :param ctx: The Click context carrying additional space-separated fixture names.
+        :param hocon_file: The registries-relative HOCON file whose fixtures are run.
+        :param compare_hocon_file: The optional second network to compare on the same fixtures.
+        :param repeats: The number of attempts per fixture.
+        :param only_fixtures: The optional fixture subset to run.
+        :param output: The optional JSON report path.
+        """
+        if ctx.args and not only_fixtures:
+            raise typer.BadParameter("Unexpected argument. Fixture names must follow --only-fixtures.")
+        selected_fixtures = list(only_fixtures or [])
+        selected_fixtures.extend(ctx.args)
+
+        raise typer.Exit(
+            code=NeuroSanStudioCli._run_score(
+                ScoreOptions(
+                    hocon_file=hocon_file,
+                    compare_hocon_file=compare_hocon_file,
+                    repeats=repeats,
+                    only_fixtures=selected_fixtures or None,
+                    output=output,
                 )
             )
         )

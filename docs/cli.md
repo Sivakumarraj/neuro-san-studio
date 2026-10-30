@@ -14,4 +14,5 @@ Run `neuro-san-studio --help` for the full list and shared options.
 | [`check-config`](./cli/check_config.md) | Validate every LLM configuration in a HOCON file. |
 | [`check-llm-keys`](./cli/check_llm_keys.md) | Validate LLM API keys and other critical environment variables. |
 | [`consultant`](./cli/consultant.md) | Generate tests and repair failing agent-network behavior. |
+| [`score`](./cli/score.md) | Score a network's pass rate and cost over repeated fixture runs, or compare two. |
 | [`validate`](./cli/validate.md) | Validate an agent network file and load its coded tool and middleware classes. |

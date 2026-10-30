@@ -1,0 +1,64 @@
+{
+    "example": true,
+    "owner": {
+        "name": "Example Candidate",
+        "email": "candidate@example.com",
+        "graduation_year": 2025,
+        "max_experience_years": 1
+    },
+    "skills": [
+        "python", "fastapi", "langchain", "rag", "llm", "pydantic", "multi-agent", "agents",
+        "docker", "sql", "machine learning", "nlp"
+    ],
+    "target_titles": [
+        "ai engineer", "ml engineer", "machine learning", "genai", "generative ai", "llm",
+        "applied scientist", "python developer", "software engineer", "data scientist"
+    ],
+    "locations": ["bengaluru", "bangalore", "remote", "india"],
+    "excluded_terms": ["unpaid", "service bond"],
+    "boards": [],
+    "contribution_repos": [
+        {"repo": "cognizant-ai-lab/neuro-san-studio", "labels": ["good first issue", "help wanted"]},
+        {"repo": "cognizant-ai-lab/neuro-san", "labels": ["good first issue", "help wanted"]}
+    ],
+    "min_score": 40,
+    "evidence_threshold": 0.7,
+    "outreach": {
+        "max_unanswered": 1,
+        "cooldown_days": 7,
+        "max_words": 180,
+        "banned_phrases": ["just checking in again", "sorry to bother you again", "any update"]
+    },
+    "contacts": {
+        "example-recruiter": {
+            "name": "Alex Recruiter",
+            "email": "alex.recruiter@example.com",
+            "status": "open",
+            "max_unanswered": 2
+        },
+        "example-maintainer": {
+            "name": "Sam Maintainer",
+            "channel": "github",
+            "status": "technical_only"
+        },
+        "example-awaiting": {
+            "name": "Jordan Awaiting",
+            "email": "jordan@example.com",
+            "status": "open",
+            "history": [
+                {"direction": "received", "happened_on": "2026-09-01"},
+                {"direction": "sent", "happened_on": "2026-09-02"}
+            ]
+        },
+        "example-reply-only": {
+            "name": "Robin Reply",
+            "email": "robin@example.com",
+            "status": "reply_only"
+        },
+        "example-paused": {
+            "name": "Pat Paused",
+            "status": "do_not_contact",
+            "reason": "asked not to be contacted"
+        }
+    }
+}

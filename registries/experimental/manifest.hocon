@@ -22,6 +22,9 @@
     # Experimental and research
     #
     "experimental/decision_prescriptor.hocon": true,
+    # Off by default: it needs a private profile (OPPORTUNITY_DESK_PROFILE) to be useful,
+    # and deploy/opportunity_desk/manifest.hocon serves it with a daily scheduled scan.
+    "experimental/opportunity_desk.hocon": false,
     "experimental/mdap_decomposer.hocon": true,
     "experimental/copy_cat.hocon": true,
     "experimental/kwik_agents.hocon": false,

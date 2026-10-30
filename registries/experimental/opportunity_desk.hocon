@@ -1,0 +1,404 @@
+# Copyright © 2025-2026 Cognizant Technology Solutions Corp, www.cognizant.com.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# END COPYRIGHT
+
+# Opportunity Desk: a personal desk of small specialists that researches with
+# checked sources, finds and tracks openings and open-source issues, and drafts
+# outreach that has to pass the owner's rules.
+#
+# The design follows four rules:
+# - Small specialists on a cheap model. Each agent does one job; only the senior
+#   analyst runs a stronger model, and only when an evidence check fails.
+# - Decisions in code. Fit scores, eligibility, evidence verdicts, outreach cadence
+#   and the digest recipient are decided in Python (coded_tools/experimental/
+#   opportunity_desk/), never by a prompt. The agents explain those decisions.
+# - Stop instead of guessing. A claim whose quote cannot be found at its source is
+#   reported as unverified, and a blocked draft is not rewritten around the block.
+# - Nothing leaves without the owner. The desk never sends a message to anyone;
+#   it emails only the owner, at the address set in the environment.
+#
+# The owner's profile (skills, boards, contacts and their rules) is a private JSON
+# file named by OPPORTUNITY_DESK_PROFILE; without it the fictional
+# example_profile.json is used. Models: OPPORTUNITY_DESK_MODEL (default
+# gpt-5.4-nano) and OPPORTUNITY_DESK_SENIOR_MODEL (default gpt-5.4-mini).
+# See docs/examples/experimental/opportunity_desk.md.
+
+{
+    include "registries/aaosa.hocon",
+
+    "metadata": {
+        "description": "A personal desk of small specialist agents: research answers whose quoted claims are checked against their sources (escalating to a stronger model when they fail), openings and open-source issues scored against the owner's profile in code and tracked through a pipeline, and outreach drafts that must pass contact, cadence and wording rules before they are shown.",
+        "tags": ["AAOSA", "research", "tracking", "safeguard", "tool", "experimental"],
+        "sample_queries": [
+            "Scan my boards and show me the best new matches.",
+            "What is in my pipeline that I have shortlisted?",
+            "What does the MAKER paper from Cognizant AI Lab propose, with sources?",
+            "Draft a short note to example-recruiter about the evidence checker I just built.",
+            "I sent example-recruiter an email today about my research desk; record it.",
+        ]
+    },
+
+    "llm_config": {
+        "model_name": "gpt-5.4-nano",
+        "model_name": ${?OPPORTUNITY_DESK_MODEL},
+    },
+
+    "max_steps": 1000,
+    "max_execution_seconds": 600,
+
+    "tools": [
+
+        # The front man. Routes with AAOSA claims and composes the answer.
+        {
+            "name": "desk_lead",
+            "function": {
+                "description": "I research questions with checked sources, find and track openings and open-source issues that fit you, and draft outreach that passes your own rules. I never send anything for you."
+            },
+            "instructions": """
+You are the lead of a personal desk. The person you talk to is its owner. Never
+mention agents or tools by name; describe what you did in plain language.
+""" ${aaosa_instructions} """
+Rules you must not break:
+- Every number, score, date, posting and fact you state must come from a reply you
+  received. If you do not have it, say so. Never estimate or fill in.
+- If a reply says the profile is an example (profile_is_example is true), tell the
+  owner the results come from fictional example data until their own profile is set.
+- If a reply starts with "Error:", tell the owner what went wrong in plain words and
+  stop that part of the work. Do not retry it a different way on your own.
+- A draft message is shown only exactly as it came back after passing the outreach
+  check. Never write or edit a message yourself. Remind the owner that they send it.
+- When research comes back with unverified claims, keep them separate from the
+  verified ones and say how many were verified.
+- When the inquiry is the scheduled "Daily scan", ask for a board scan and then for
+  the digest to be sent, and reply with one line saying what happened.
+""",
+            "tools": ["research_analyst", "opportunity_scout", "outreach_writer"]
+        },
+
+        {
+            "name": "research_analyst",
+            "function": ${aaosa_call} {
+                "description": "Answers technical, research and market questions with sources. Every quoted claim is checked against its page, and the question goes to a stronger model when too few claims hold up."
+            },
+            "instructions": """
+You answer research questions from cited pages, never from memory alone.
+
+If the mode is 'Determine', call no tools. Claim research, explanation, comparison,
+paper-finding and fact-checking inquiries, and nothing about tracking openings or
+writing messages. Reply only with the Determine JSON described below.
+
+If the mode is 'Fulfill' or 'Follow up':
+1. Search with web_search. Also use paper_search when the question is about papers
+   or academic results.
+2. Read the two to four most relevant pages with page_reader.
+3. Write your findings as claims. Each claim has a source_url you actually read and a
+   quote of at least six words copied exactly from that page. No quote, no claim.
+4. Call evidence_checker with all claims (at most eight).
+5. If the verdict is ESCALATE, call senior_analyst with the question and the full
+   checker output, and base your answer on what it returns.
+6. Answer with the verified claims as findings, each with its source. List any other
+   claims under "Not verified" with the checker's status. State how many claims were
+   verified out of how many.
+
+Determine JSON: {"Name": "research_analyst", "Inquiry": <the inquiry>, "Mode": "Determine",
+"Relevant": <Yes|No>, "Strength": <1-10>, "Claim": <All|Partial>, "Requirements": "None"}
+Fulfill JSON: {"Name": "research_analyst", "Inquiry": <the inquiry>, "Mode": "Fulfill",
+"Response": <your answer>}
+""",
+            "tools": ["web_search", "paper_search", "page_reader", "evidence_checker", "senior_analyst"]
+        },
+
+        # The only agent on the stronger model, called only after a failed evidence check.
+        {
+            "name": "senior_analyst",
+            "function": {
+                "description": "Re-researches a question whose first answer failed its evidence check, on a stronger model.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The research question."
+                        },
+                        "failed_check": {
+                            "type": "string",
+                            "description": "The evidence checker's output for the first attempt."
+                        }
+                    },
+                    "required": ["question", "failed_check"]
+                }
+            },
+            "llm_config": {
+                "model_name": "gpt-5.4-mini",
+                "model_name": ${?OPPORTUNITY_DESK_SENIOR_MODEL},
+            },
+            "instructions": """
+A first attempt at this question failed its evidence check. Read the failed check to
+see which claims did not hold up and why.
+
+1. Search with web_search and read the pages most likely to state the answer
+   directly, preferring primary sources: the paper, the official documentation,
+   the organization's own page.
+2. Write claims, each with a source_url you read and a quote of at least six words
+   copied exactly from it.
+3. Call evidence_checker once with those claims.
+4. Return the verified claims as findings with their sources, the rest under
+   "Not verified", and the verified count. If little holds up, say plainly that the
+   question could not be answered from reliable sources. Do not guess.
+""",
+            "tools": ["web_search", "page_reader", "evidence_checker"]
+        },
+
+        {
+            "name": "opportunity_scout",
+            "function": ${aaosa_call} {
+                "description": "Finds openings on the owner's careers boards and open issues in the repositories they follow, scores each against the owner's profile, tracks them through a pipeline, and emails the owner a digest of new matches."
+            },
+            "instructions": """
+You look after the owner's pipeline of openings and open-source issues.
+
+If the mode is 'Determine', call no tools. Claim inquiries about scanning boards,
+new matches, the pipeline, changing the status of an opening, the audit log and the
+digest. Reply only with the Determine JSON described below.
+
+If the mode is 'Fulfill' or 'Follow up':
+- To look for new openings or issues, call board_scanner.
+- To show the pipeline, call pipeline_tracker with action "list" (and a status
+  when one is asked for). To show past decisions, use action "audit".
+- To change an opening's status, call pipeline_tracker with action "update", the
+  opportunity_id and the new status.
+- To send the digest, call digest_sender.
+
+Report scores and reasons exactly as the tools return them. Never rescore, rank by
+your own judgement or describe a posting the tools did not return. Always say which
+sources failed, if any.
+
+Determine JSON: {"Name": "opportunity_scout", "Inquiry": <the inquiry>, "Mode": "Determine",
+"Relevant": <Yes|No>, "Strength": <1-10>, "Claim": <All|Partial>, "Requirements": "None"}
+Fulfill JSON: {"Name": "opportunity_scout", "Inquiry": <the inquiry>, "Mode": "Fulfill",
+"Response": <your answer>}
+""",
+            "tools": ["board_scanner", "pipeline_tracker", "digest_sender"]
+        },
+
+        {
+            "name": "outreach_writer",
+            "function": ${aaosa_call} {
+                "description": "Drafts plain-text emails and messages to the owner's contacts, which are shown only after they pass the owner's contact, cadence and wording rules, and records messages the owner sent or received."
+            },
+            "instructions": """
+You write drafts for the owner to send, and keep the record of what they sent.
+
+If the mode is 'Determine', call no tools. Claim inquiries about drafting a message to
+a contact and about recording a message sent or received. Reply only with the
+Determine JSON described below.
+
+If the mode is 'Fulfill' or 'Follow up':
+- To draft: write a subject and a body in plain text, with no markdown. Keep it short
+  and specific: one new, concrete fact, and at most one clear ask. No pleading, no
+  repeated asks, no flattery. Then call outreach_gate with the contact_id, subject
+  and body.
+  - If the reply starts with "CLEARED", return everything after "CLEARED" exactly as
+    it is.
+  - If the reply starts with "Error: Blocked", return the reasons. Do not write a
+    second draft that works around a cadence or status block; say what would have to
+    change, such as waiting for their reply.
+  - Never return a draft that did not come back CLEARED.
+- To record a message the owner sent or received, call outreach_recorder.
+
+Determine JSON: {"Name": "outreach_writer", "Inquiry": <the inquiry>, "Mode": "Determine",
+"Relevant": <Yes|No>, "Strength": <1-10>, "Claim": <All|Partial>, "Requirements": "None"}
+Fulfill JSON: {"Name": "outreach_writer", "Inquiry": <the inquiry>, "Mode": "Fulfill",
+"Response": <your answer>}
+""",
+            "tools": ["outreach_gate", "outreach_recorder"]
+        },
+
+        # ---------- Coded tools: every decision below is made in Python ----------
+
+        {
+            "name": "board_scanner",
+            "function": {
+                "description": "Reads every careers board and repository in the owner's profile, scores each posting against the profile, stores the new ones and returns the best new matches with their reasons.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "int",
+                            "description": "How many new matches to return, at most 50. Defaults to 10."
+                        }
+                    },
+                    "required": []
+                }
+            },
+            "class": "scan_boards.ScanBoards"
+        },
+        {
+            "name": "pipeline_tracker",
+            "function": {
+                "description": "Lists tracked openings, changes the status of one, or shows the audit log of the desk's decisions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "'list', 'update' or 'audit'."
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "For list, only this status. For update, the new status: new, shortlisted, applied, interviewing, offer, rejected or dropped."
+                        },
+                        "opportunity_id": {
+                            "type": "string",
+                            "description": "For update, the id of the opening to change."
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "For update, an optional note to keep with it."
+                        },
+                        "min_score": {
+                            "type": "int",
+                            "description": "For list, only openings scoring at least this."
+                        },
+                        "limit": {
+                            "type": "int",
+                            "description": "How many rows, at most 100. Defaults to 20."
+                        }
+                    },
+                    "required": ["action"]
+                }
+            },
+            "class": "pipeline_tracker.PipelineTracker"
+        },
+        {
+            "name": "digest_sender",
+            "function": {
+                "description": "Emails the owner the matches found since the last digest, or returns the digest as text when email is not set up.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            "class": "send_digest.SendDigest"
+        },
+        {
+            "name": "evidence_checker",
+            "function": {
+                "description": "Fetches each cited page and checks that the quoted passage is really on it, then returns a status per claim and a verdict: SUPPORTED, or ESCALATE when too few claims hold up.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "claims": {
+                            "type": "array",
+                            "description": "At most eight claims to check.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "claim": {
+                                        "type": "string",
+                                        "description": "The statement, in your words."
+                                    },
+                                    "source_url": {
+                                        "type": "string",
+                                        "description": "The page that supports it."
+                                    },
+                                    "quote": {
+                                        "type": "string",
+                                        "description": "At least six words copied exactly from that page."
+                                    }
+                                },
+                                "required": ["claim", "source_url", "quote"]
+                            }
+                        }
+                    },
+                    "required": ["claims"]
+                }
+            },
+            "class": "check_evidence.CheckEvidence"
+        },
+        {
+            "name": "outreach_gate",
+            "function": {
+                "description": "Checks a draft message against the contact's status, the reply cadence and the wording rules, and returns it ready to copy only when it passes.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "contact_id": {
+                            "type": "string",
+                            "description": "The contact's id in the owner's profile."
+                        },
+                        "subject": {
+                            "type": "string",
+                            "description": "The subject line, if the message has one."
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "The message, in plain text."
+                        }
+                    },
+                    "required": ["contact_id", "body"]
+                }
+            },
+            "class": "outreach_gate.OutreachGate"
+        },
+        {
+            "name": "outreach_recorder",
+            "function": {
+                "description": "Records a message the owner sent to, or received from, one of their contacts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "contact_id": {
+                            "type": "string",
+                            "description": "The contact's id in the owner's profile."
+                        },
+                        "direction": {
+                            "type": "string",
+                            "description": "'sent' or 'received'."
+                        },
+                        "happened_on": {
+                            "type": "string",
+                            "description": "The date, YYYY-MM-DD. Defaults to today."
+                        },
+                        "summary": {
+                            "type": "string",
+                            "description": "One line about the message."
+                        }
+                    },
+                    "required": ["contact_id", "direction"]
+                }
+            },
+            "class": "record_outreach.RecordOutreach"
+        },
+
+        # ---------- Toolbox tools ----------
+
+        # DuckDuckGo search needs no API key.
+        {
+            "name": "web_search",
+            "toolbox": "ddgs_search"
+        },
+        {
+            "name": "paper_search",
+            "toolbox": "arxiv_retriever"
+        },
+        # SSRF-hardened page fetch, the same one evidence_checker uses.
+        {
+            "name": "page_reader",
+            "toolbox": "web_fetch"
+        }
+    ]
+}

@@ -332,6 +332,7 @@ class TestIntegrationTestHocons(TestCase, FailFastParamMixin):
                 "experimental/decision_prescriptor/delivery_staffing_example.hocon",
                 "experimental/mdap_decomposer/long_multiplication.hocon",
                 "experimental/mdap_decomposer/list_sorting.hocon",
+                "experimental/opportunity_desk/outreach_blocked.hocon",
                 # List more hocon files as they become available here.
             ]
         ),

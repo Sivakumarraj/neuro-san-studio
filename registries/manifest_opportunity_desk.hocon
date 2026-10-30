@@ -1,0 +1,40 @@
+# Copyright © 2025-2026 Cognizant Technology Solutions Corp, www.cognizant.com.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# END COPYRIGHT
+
+# Manifest for a deployment that serves only the Opportunity Desk, as
+# deploy/opportunity_desk/ does: point AGENT_MANIFEST_FILE at this file.
+#
+# Serving one network keeps memory low and the surface small; in particular the
+# agent network designer and its helpers are not served. Paths below resolve
+# relative to this file.
+{
+    "experimental/opportunity_desk.hocon": {
+        "serve": true,
+        "public": true,
+
+        # neuro-san's built-in scheduler sends this inquiry every day. The scan and
+        # the digest are coded tools, so a scheduled run costs only the agents'
+        # routing on the cheap model. Cron fields: minute hour day month weekday second,
+        # in the server's time zone (UTC on the deployment): 03:01 UTC is 08:31 in India.
+        "periodic": {
+            "cron_schedule": "1 3 * * * 0",
+            "text": "Daily scan",
+            "metadata": {
+                "user_id": "scheduler"
+            }
+        }
+    }
+}

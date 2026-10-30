@@ -1,0 +1,70 @@
+# Copyright © 2025-2026 Cognizant Technology Solutions Corp, www.cognizant.com.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# END COPYRIGHT
+
+# Render Blueprint for the Opportunity Desk (registries/experimental/opportunity_desk.hocon),
+# built from deploy/opportunity_desk/Dockerfile.
+#
+# In the Render dashboard: New > Blueprint, pick this repository and the branch to
+# deploy. Render asks for every value marked "sync: false". Then, under the service's
+# Environment tab, add a Secret File named profile.json holding your private profile
+# (start from coded_tools/experimental/opportunity_desk/example_profile.json).
+# Full steps: docs/examples/experimental/opportunity_desk.md.
+#
+# Cost: the starter instance (512 MB) and a 1 GB disk, roughly $7 to $8 a month at
+# Render's list prices; model calls on gpt-5.4-nano are cents a month.
+
+services:
+  - type: web
+    name: opportunity-desk
+    runtime: docker
+    dockerfilePath: ./deploy/opportunity_desk/Dockerfile
+    dockerContext: .
+    # A persistent disk needs a paid instance; the free one sleeps and forgets the tracker.
+    plan: starter
+    # Closest Render region to India.
+    region: singapore
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: desk-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DESK_USERNAME
+        value: owner
+      # At least 16 characters, or the container refuses to start.
+      - key: DESK_PASSWORD
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPPORTUNITY_DESK_PROFILE
+        value: /etc/secrets/profile.json
+      - key: OPPORTUNITY_DESK_MODEL
+        value: gpt-5.4-nano
+      - key: OPPORTUNITY_DESK_SENIOR_MODEL
+        value: gpt-5.4-mini
+      # Optional: email the daily digest to yourself. With a Gmail account, use an app
+      # password (Google Account > Security > App passwords), never the account password.
+      - key: OPPORTUNITY_DESK_SMTP_HOST
+        value: smtp.gmail.com
+      - key: OPPORTUNITY_DESK_SMTP_PORT
+        value: "587"
+      - key: OPPORTUNITY_DESK_SMTP_USER
+        sync: false
+      - key: OPPORTUNITY_DESK_SMTP_PASSWORD
+        sync: false
+      - key: OPPORTUNITY_DESK_DIGEST_TO
+        sync: false

@@ -1,0 +1,54 @@
+# Copyright © 2025-2026 Cognizant Technology Solutions Corp, www.cognizant.com.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# END COPYRIGHT
+
+# Caddy in front of the Opportunity Desk (see start.sh). The host terminates TLS,
+# so Caddy listens on plain HTTP on $PORT. Everything except the health check
+# needs the owner's password; the hash comes from start.sh, never from this file.
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:10000} {
+	encode zstd gzip
+
+	# The host's health check, without a password. nsflow answers it, so a dead
+	# backend fails the check rather than hiding behind a healthy proxy.
+	handle /healthz {
+		rewrite * /api/v1/ping
+		reverse_proxy localhost:4173
+	}
+
+	# The web client and its websocket. nsflow talks to the neuro-san server on
+	# localhost itself, so that server needs no route here.
+	handle {
+		basic_auth {
+			{$DESK_USERNAME} {$DESK_PASSWORD_HASH}
+		}
+		reverse_proxy localhost:4173
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output stdout
+	}
+}

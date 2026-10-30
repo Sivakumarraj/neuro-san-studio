@@ -74,6 +74,7 @@ Here are a few examples ordered by level of complexity.
     - [Agent Network Architect](#agent-network-architect)
     - [Copy Cat](#copy-cat)
     - [Decision Prescriptor](#decision-prescriptor)
+    - [Opportunity Desk](#opportunity-desk)
     - [CRUSE Theme Agent](#cruse-theme-agent)
     - [CRUSE Widget Agent](#cruse-widget-agent)
     - [CRUSE](#cruse)
@@ -672,6 +673,16 @@ records, evolves neural prescriptor policies against it with NSGA-II, and return
 where no option beats every other on everything at once, rendered as a self-contained HTML report.
 
 **Tags:** `decision-optimization`, `pareto`, `evolutionary`, `tool`, `visualization`
+
+### Opportunity Desk
+
+[Opportunity Desk](examples/experimental/opportunity_desk.md) is a personal desk of small specialist agents. It
+answers research questions with quoted claims checked against their sources, escalating to a stronger model when
+too few hold up, scores openings and open-source issues against the owner's profile in code and tracks them, and
+drafts outreach that must pass contact, cadence and wording rules before it is shown. It deploys to the cloud
+behind a password, with a daily scheduled scan.
+
+**Tags:** `AAOSA`, `research`, `tracking`, `safeguard`, `tool`, `experimental`
 
 ### MDAP Decomposer (MAKER example)
 

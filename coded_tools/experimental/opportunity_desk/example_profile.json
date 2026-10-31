@@ -22,6 +22,7 @@
         {"repo": "cognizant-ai-lab/neuro-san", "labels": []}
     ],
     "github_user": "",
+    "maintainers": [],
     "upstream_repos": ["cognizant-ai-lab/neuro-san-studio", "cognizant-ai-lab/neuro-san", "cognizant-ai-lab/nsflow"],
     "min_score": 40,
     "evidence_threshold": 0.7,

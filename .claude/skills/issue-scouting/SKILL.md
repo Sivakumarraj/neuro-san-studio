@@ -15,17 +15,26 @@ usually waits.
   (github.com/cognizant-ai-lab/<repo>/issues?q=is:issue+is:open+sort:created-desc) through a
   web-fetch tool, or from the REST API (api.github.com/repos/cognizant-ai-lab/<repo>/issues?state=open&per_page=50,
   60 unauthenticated requests an hour). In the API, an entry with a `pull_request` key is a pull
-  request: skip it. An `author_association` of OWNER, MEMBER or COLLABORATOR means a maintainer
-  filed it.
+  request: skip it. `assignees` and `user.login` say who holds it and who filed it.
 - Upstream leaves most issues unlabelled, so never filter by label.
 
 ## Is it still free?
 
-1. Nobody is assigned.
-2. No open pull request mentions it (github.com/cognizant-ai-lab/<repo>/pulls?q=is:pr+<NNNN>).
-3. It is not already fixed: `git log upstream/main --oneline --grep "#<NNNN>"` (upstream's commits
-   start with the issue number).
-4. No maintainer comment says they are on it.
+Upstream assigns almost every issue to whoever filed it (on Oct 31 2026 only a canary test was unassigned in
+neuro-san-studio), so assignment is not the test. An issue is a candidate when:
+
+1. No open pull request mentions it (github.com/cognizant-ai-lab/<repo>/pulls?q=is:pr+<NNNN>) and no
+   branch for it shows under the issue's Development section.
+2. It is not already fixed: `git log upstream/main --oneline --grep "#<NNNN>"` (upstream's commits start
+   with the issue number).
+3. It has waited a week or more. A brand-new issue is usually in its filer's hands, and outside fixes that
+   raced the owner were closed when the owner's own fix landed (#1511).
+4. The first step is a comment asking the assignee whether they would take an outside pull request, and no
+   code is written before they say yes.
+
+GitHub's `author_association` is not a reliable maintainer signal: staff with private organization
+membership show as CONTRIBUTOR to a logged-out reader. Use the owner's maintainer list (the desk profile's
+`maintainers`) instead.
 
 ## Rank
 
@@ -34,9 +43,9 @@ Score the way the Opportunity Desk's `FitAssessor` scores contributions, so the 
 | Signal | Points |
 |--------|--------|
 | The change is in familiar ground: coded tools, HOCON networks, the `ns` CLI, tests, docs | up to 40 |
-| Nobody is assigned | 25 (assigned: drop it) |
+| Nobody assigned / assigned to its filer / assigned to someone else | 25 / 15 / 5 |
 | A maintainer filed it | 20 |
-| Opened within the last 30 days | 15 |
+| Open 7 to 60 days / longer / under a week | 15 / 5 / 0 |
 
 Among close scores, prefer the smaller change, the clearer definition of done, and the fix a unit
 test can prove. Avoid the Agent Network Designer refactors maintainers are partway through, anything

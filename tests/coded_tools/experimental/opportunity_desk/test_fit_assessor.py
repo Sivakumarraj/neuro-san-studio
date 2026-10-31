@@ -107,8 +107,13 @@ class TestFitAssessor(TestCase):
         self.assertIn("location 'Berlin' is not one you listed", result.reasons)
 
     @staticmethod
-    def _issue(claimed_by: str = "", maintainer: bool = True, opened: str = "2026-10-25T00:00:00Z") -> Posting:
-        """Build an open repository issue."""
+    def _issue(
+        claimed_by: str = "",
+        filed_by: str = "Noravee",
+        maintainer: bool = True,
+        opened: str = "2026-10-15T00:00:00Z",
+    ) -> Posting:
+        """Build an open repository issue; TODAY in these tests is 2026-10-31."""
         return Posting(
             posting_id="github:org/repo:7",
             kind="contribution",
@@ -120,27 +125,55 @@ class TestFitAssessor(TestCase):
             description="Python change in a coded tool; 5 years of history in this file.",
             posted_at=opened,
             claimed_by=claimed_by,
+            filed_by=filed_by,
             filed_by_maintainer=maintainer,
         )
 
-    def test_fresh_unclaimed_maintainer_issue_scores_high(self):
-        """The issue most likely to be merged: wanted, free and recent. No seniority bar applies."""
+    def _assess(self, issue: Posting, assessor: FitAssessor | None = None) -> FitResult:
+        """Assess with the date pinned to 2026-10-31."""
         with mock.patch.object(DeskClock, "today", return_value=date(2026, 10, 31)):
-            result: FitResult = self.assessor.assess(self._issue())
+            return (assessor or self.assessor).assess(issue)
+
+    def test_settled_unassigned_maintainer_issue_scores_high(self):
+        """Wanted, free, and waited two weeks: the best target. No seniority bar applies."""
+        result: FitResult = self._assess(self._issue())
         self.assertTrue(result.eligible)
         self.assertGreaterEqual(result.score, 60)
+        self.assertIn("nobody is assigned", result.reasons)
         self.assertIn("filed by a maintainer, so the fix is wanted", result.reasons)
-        self.assertIn("opened 6 day(s) ago", result.reasons)
+        self.assertIn("open 16 days without a fix", result.reasons)
 
-    def test_claimed_issue_is_not_open_work(self):
-        """Someone else is on it: ineligible, and the reason names them."""
-        result: FitResult = self.assessor.assess(self._issue(claimed_by="someone"))
-        self.assertFalse(result.eligible)
-        self.assertIn("already assigned to someone", result.reasons)
+    def test_assignment_means_ask_first_not_taken(self):
+        """Upstream assigns issues to their filers, so an assigned issue stays eligible with a prompt."""
+        self_assigned: FitResult = self._assess(self._issue(claimed_by="Noravee"))
+        self.assertTrue(self_assigned.eligible)
+        self.assertTrue(any("ask them in a comment" in reason for reason in self_assigned.reasons))
+        other: FitResult = self._assess(self._issue(claimed_by="someone"))
+        self.assertTrue(other.eligible)
+        self.assertIn("assigned to someone: ask them before starting", other.reasons)
+        free: FitResult = self._assess(self._issue())
+        self.assertGreater(free.score, self_assigned.score)
+        self.assertGreater(self_assigned.score, other.score)
+
+    def test_brand_new_issue_earns_no_age_points(self):
+        """An issue filed this week is probably in its filer's hands; racing them gets a PR closed."""
+        result: FitResult = self._assess(self._issue(opened="2026-10-30T00:00:00Z"))
+        self.assertIn("only 1 day(s) old: its filer is probably working on it", result.reasons)
+        self.assertLess(result.score, self._assess(self._issue()).score)
 
     def test_old_outside_issue_scores_lower(self):
-        """Without the maintainer and freshness signals the same issue ranks lower."""
-        with mock.patch.object(DeskClock, "today", return_value=date(2026, 10, 31)):
-            fresh: FitResult = self.assessor.assess(self._issue())
-            old: FitResult = self.assessor.assess(self._issue(maintainer=False, opened="2026-01-01T00:00:00Z"))
-        self.assertLess(old.score, fresh.score)
+        """Without the maintainer and age signals the same issue ranks lower."""
+        settled: FitResult = self._assess(self._issue())
+        old: FitResult = self._assess(
+            self._issue(maintainer=False, filed_by="outsider", opened="2026-01-01T00:00:00Z")
+        )
+        self.assertLess(old.score, settled.score)
+        self.assertIn("open 303 days", old.reasons)
+
+    def test_profile_maintainer_list_overrides_github_association(self):
+        """Staff with private org membership show as CONTRIBUTOR; the profile's list catches them."""
+        profile = DeskProfile({"maintainers": ["Noravee"], "skills": ["python"]})
+        listed: FitResult = self._assess(self._issue(maintainer=False), FitAssessor(profile))
+        self.assertIn("filed by a maintainer, so the fix is wanted", listed.reasons)
+        unlisted: FitResult = self._assess(self._issue(filed_by="outsider", maintainer=True), FitAssessor(profile))
+        self.assertNotIn("filed by a maintainer, so the fix is wanted", unlisted.reasons)

@@ -22,3 +22,4 @@ never carry either.
 | Date | Change | Target | Reason |
 |------|--------|--------|--------|
 | 2026-10-31 | Initial setup | All | No harness existed; a stale fork and fixture URLs broke CI |
+| 2026-10-31 | Assignment means ask first | scout agent and skills, rules | Upstream self-assigns issues |

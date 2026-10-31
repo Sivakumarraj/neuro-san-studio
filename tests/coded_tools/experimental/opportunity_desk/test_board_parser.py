@@ -107,6 +107,7 @@ GITHUB_ISSUES: list = [
         "labels": [{"name": "good first issue"}],
         "body": "Python change.",
         "created_at": "2026-10-01T00:00:00Z",
+        "user": {"login": "Noravee"},
         "author_association": "MEMBER",
         "assignees": [],
         "comments": 0,
@@ -164,6 +165,7 @@ class TestBoardParser(TestCase):
         self.assertEqual(postings[0].kind, "contribution")
         self.assertIn("good first issue", postings[0].description)
         self.assertTrue(postings[0].filed_by_maintainer)
+        self.assertEqual(postings[0].filed_by, "Noravee")
         self.assertEqual(postings[0].claimed_by, "")
         self.assertEqual(postings[1].claimed_by, "someone")
         self.assertEqual(postings[1].comments, 3)

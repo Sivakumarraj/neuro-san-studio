@@ -65,10 +65,12 @@ location and an entry-level signal, with a reason for every point. Hard requirem
 ineligible whatever its score: more years of experience than the owner's limit, a graduation batch that
 excludes the owner, a senior title, or a term the owner excluded.
 
-Open issues in the repositories under `contribution_repos` are scored differently, because the issue most
-likely to be reviewed and merged is one a maintainer filed, nobody has claimed and that is still fresh:
-skills earn up to 40 points, nobody being assigned 25, a maintainer having filed it 20, and being under 30
-days old 15. An issue already assigned to someone is ineligible.
+Open issues in the repositories under `contribution_repos` are scored differently. Upstream assigns most issues
+to whoever filed them, so assignment is a prompt to ask before starting rather than a claim, and an issue filed
+this week is usually still in its filer's hands. Skills earn up to 40 points; nobody being assigned 25, the filer
+15, someone else 5; a maintainer having filed it 20 (judged by the profile's `maintainers` list, or by GitHub's
+author association when there is none); and having waited 7 to 60 days 15, longer 5, under a week nothing. The
+reasons tell the owner to ask the assignee in a comment before writing any code.
 
 ### Contribution tracking
 
@@ -140,6 +142,7 @@ the desk says so in every scan.
     "boards": [{"provider": "greenhouse", "slug": "<board slug>", "company": "<name>"}],
     "contribution_repos": [{"repo": "cognizant-ai-lab/neuro-san-studio", "labels": []}],
     "github_user": "<your GitHub login>",
+    "maintainers": ["<a maintainer's GitHub login>"],
     "upstream_repos": ["cognizant-ai-lab/neuro-san-studio", "cognizant-ai-lab/neuro-san"],
     "outreach": {"max_unanswered": 1, "cooldown_days": 7, "max_words": 180, "banned_phrases": []},
     "contacts": {

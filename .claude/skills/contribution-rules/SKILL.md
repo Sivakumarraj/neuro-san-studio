@@ -38,8 +38,11 @@ a pull request:
 
 - Fill `.github/PULL_REQUEST_TEMPLATE.md` heading by heading. A free-form description is one
   reason an earlier pull request was closed.
-- A bug or chore can go straight to a pull request with "Fixes #NNNN". A feature needs an issue
-  first, and no pull request until a maintainer has answered it.
+- Before writing code for any issue, comment on it asking its assignee (usually its filer) whether
+  they would take an outside pull request, and wait for a yes. Outside fixes that raced an issue's
+  owner were closed when the owner's own fix landed.
+- A bug or chore can then go to a pull request with "Fixes #NNNN". A feature needs an issue first,
+  and no pull request until a maintainer has answered it.
 - Technical content only. Never mention jobs, hiring, referrals, internships or graduating in an
   issue, pull request, comment or commit. Mention at most one maintainer, and nudge at most once.
 - The owner posts every issue, comment and pull request himself. Prepare the text, show it, stop.
@@ -68,3 +71,7 @@ Branching from `upstream/main` keeps all of these out; the preflight gate checks
   #1138, #1145, #1179). Never resubmit it in any form.
 - A merged code fix weighs more than another documentation line, and the people who merge them
   are the lab's own engineers.
+- Open #1530 ("Feature/decision prescriptor", Jul 2026) submits a new network as code with an empty
+  "Fixes #" line and many merge commits from main: the pattern that gets closed. Finish its template
+  and link an issue a maintainer has answered, or close it and list the network under Community
+  Projects from its own repository.

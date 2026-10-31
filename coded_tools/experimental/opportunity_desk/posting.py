@@ -41,8 +41,10 @@ class Posting:
     description: str
     # ISO 8601 when the provider gives one, otherwise empty.
     posted_at: str
-    # Contributions only: who the issue is assigned to (empty when nobody), whether a
-    # maintainer filed it, and how many comments it has. A claimed issue is not open work.
+    # Contributions only: who the issue is assigned to (comma-separated, empty when nobody),
+    # who filed it, whether GitHub marks the filer as a collaborator, and how many comments it
+    # has. Upstream usually assigns an issue to its filer, so assignment alone is not a claim.
     claimed_by: str = ""
+    filed_by: str = ""
     filed_by_maintainer: bool = False
     comments: int = 0

@@ -153,6 +153,13 @@ class DeskProfile:
         """
         return [str(repo) for repo in self._data.get("upstream_repos") or []]
 
+    def maintainers(self) -> list[str]:
+        """
+        :return: GitHub logins, lowercased, of the people who maintain the upstream repositories.
+            Empty means "trust GitHub's author_association instead".
+        """
+        return self._lowered("maintainers")
+
     def min_score(self) -> int:
         """
         :return: The score a posting needs before it is shown as a match. Defaults to 40.

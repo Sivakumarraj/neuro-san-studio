@@ -37,13 +37,18 @@ SENIOR_TITLE_TERMS: tuple[str, ...] = ("senior", "sr.", "staff", "principal", "l
 ENTRY_TERMS: tuple[str, ...] = ("fresher", "new grad", "graduate", "entry level", "entry-level", "intern", "trainee")
 
 SKILL_POINTS: int = 50
-# Contributions: an open issue a maintainer filed, nobody has claimed and is still fresh is
-# the work most likely to be reviewed and merged, so those signals outweigh skill overlap.
+# Contributions. Upstream assigns most issues to whoever filed them, so assignment is a prompt to
+# ask the assignee first, not a claim. A brand-new issue is usually being worked on by its filer
+# (outside fixes that raced the owner were closed), so the best target has waited a week or more.
 CONTRIBUTION_SKILL_POINTS: int = 40
-UNCLAIMED_POINTS: int = 25
+UNASSIGNED_POINTS: int = 25
+SELF_ASSIGNED_POINTS: int = 15
+OTHER_ASSIGNED_POINTS: int = 5
 MAINTAINER_POINTS: int = 20
-FRESH_POINTS: int = 15
-FRESH_DAYS: int = 30
+SETTLED_POINTS: int = 15
+LONG_OPEN_POINTS: int = 5
+SETTLED_MIN_DAYS: int = 7
+SETTLED_MAX_DAYS: int = 60
 TITLE_POINTS: int = 20
 LOCATION_POINTS: int = 15
 ENTRY_POINTS: int = 15
@@ -63,9 +68,9 @@ class FitAssessor:
     however well it scores, because a high score on a role the owner cannot take is
     worse than no result.
 
-    Contributions (repository issues) have no location or seniority bar. They score on
-    skills, on nobody being assigned, on a maintainer having filed them and on being
-    fresh; an issue already assigned to someone is ineligible.
+    Contributions (repository issues) have no location or seniority bar and are always
+    eligible. They score on skills, on who is assigned (nobody, the filer, someone else),
+    on a maintainer having filed them, and on having waited a week or more without a fix.
     """
 
     def __init__(self, profile: DeskProfile):
@@ -100,31 +105,74 @@ class FitAssessor:
         reasons.extend(blockers)
         return FitResult(score=min(score, 100), eligible=not blockers, reasons=tuple(reasons))
 
-    @staticmethod
-    def _contribution_fit(posting: Posting, matched_skills: int, reasons: list[str]) -> FitResult:
+    def _contribution_fit(self, posting: Posting, matched_skills: int, reasons: list[str]) -> FitResult:
         """
         :param posting: An open issue in a tracked repository.
         :param matched_skills: How many of the owner's skills the issue mentions.
         :param reasons: Reasons so far; one is added per signal.
-        :return: The fit; an issue someone is already assigned to is ineligible.
+        :return: The fit. Always eligible: whether to start is the assignee's answer to a question.
         """
         score: int = round(CONTRIBUTION_SKILL_POINTS * min(1.0, matched_skills / SKILLS_FOR_FULL_MARKS))
-        if posting.claimed_by:
-            reasons.append(f"already assigned to {posting.claimed_by}")
-            return FitResult(score=score, eligible=False, reasons=tuple(reasons))
-        score += UNCLAIMED_POINTS
-        reasons.append("nobody is assigned")
-        if posting.filed_by_maintainer:
+        score += self._assignment_points(posting, reasons)
+        if self._filed_by_maintainer(posting):
             score += MAINTAINER_POINTS
             reasons.append("filed by a maintainer, so the fix is wanted")
-        opened: date | None = FitAssessor._date(posting.posted_at)
-        if opened is not None:
-            age: int = (DeskClock.today() - opened).days
-            if age <= FRESH_DAYS:
-                score += FRESH_POINTS
-            reasons.append(f"opened {age} day(s) ago")
+        score += self._age_points(posting, reasons)
         reasons.append(f"{posting.comments} comment(s)")
         return FitResult(score=min(score, 100), eligible=True, reasons=tuple(reasons))
+
+    @staticmethod
+    def _assignment_points(posting: Posting, reasons: list[str]) -> int:
+        """
+        :param posting: An open issue.
+        :param reasons: Reasons so far; the assignment verdict adds one.
+        :return: Full points when nobody is assigned, fewer when its filer is (upstream's habit),
+            fewest when someone else is.
+        """
+        assignees: list[str] = [name.strip() for name in posting.claimed_by.split(",") if name.strip()]
+        if not assignees:
+            reasons.append("nobody is assigned")
+            return UNASSIGNED_POINTS
+        if posting.filed_by and [name.lower() for name in assignees] == [posting.filed_by.lower()]:
+            reasons.append(
+                f"assigned to its filer {posting.filed_by}, as upstream usually does: ask them in a comment "
+                "whether they would take an outside pull request before writing code"
+            )
+            return SELF_ASSIGNED_POINTS
+        reasons.append(f"assigned to {', '.join(assignees)}: ask them before starting")
+        return OTHER_ASSIGNED_POINTS
+
+    def _filed_by_maintainer(self, posting: Posting) -> bool:
+        """
+        :param posting: An open issue.
+        :return: True when the profile's maintainer list names the filer, or, without a list,
+            when GitHub marks the filer as a collaborator.
+        """
+        maintainers: list[str] = self._profile.maintainers()
+        if maintainers:
+            return posting.filed_by.lower() in maintainers
+        return posting.filed_by_maintainer
+
+    @staticmethod
+    def _age_points(posting: Posting, reasons: list[str]) -> int:
+        """
+        :param posting: An open issue.
+        :param reasons: Reasons so far; the age verdict adds one.
+        :return: The most for an issue that has waited SETTLED_MIN_DAYS to SETTLED_MAX_DAYS, none
+            for a brand-new one, a little for an old one.
+        """
+        opened: date | None = FitAssessor._date(posting.posted_at)
+        if opened is None:
+            return 0
+        age: int = (DeskClock.today() - opened).days
+        if age < SETTLED_MIN_DAYS:
+            reasons.append(f"only {age} day(s) old: its filer is probably working on it")
+            return 0
+        if age <= SETTLED_MAX_DAYS:
+            reasons.append(f"open {age} days without a fix")
+            return SETTLED_POINTS
+        reasons.append(f"open {age} days")
+        return LONG_OPEN_POINTS
 
     @staticmethod
     def _date(stamp: str) -> date | None:

@@ -42,7 +42,9 @@ BOARD_URLS: dict[str, str] = {
 GITHUB_ISSUES_URL: str = "https://api.github.com/repos/{repo}/issues?state=open&per_page=50"
 # One search returns the owner's pull requests and issues across every tracked repository.
 GITHUB_SEARCH_URL: str = "https://api.github.com/search/issues?q={query}&sort=updated&order=desc&per_page=50"
-# GitHub's author_association values for people with commit rights to the repository.
+# GitHub's author_association values for people with commit rights to the repository. Staff
+# with private organization membership show as CONTRIBUTOR to a logged-out reader, so the
+# profile's "maintainers" list, when given, takes precedence (see FitAssessor).
 MAINTAINER_ASSOCIATIONS: frozenset[str] = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 
 
@@ -190,6 +192,7 @@ class BoardParser:
                     description=BoardParser._clip(f"Labels: {', '.join(labels)}\n{issue.get('body') or ''}"),
                     posted_at=str(issue.get("created_at") or ""),
                     claimed_by=", ".join(assignees),
+                    filed_by=str((issue.get("user") or {}).get("login", "")),
                     filed_by_maintainer=str(issue.get("author_association", "")) in MAINTAINER_ASSOCIATIONS,
                     comments=int(issue.get("comments") or 0),
                 )

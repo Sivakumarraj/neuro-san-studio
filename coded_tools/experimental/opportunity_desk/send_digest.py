@@ -17,10 +17,12 @@
 import asyncio
 import logging
 import smtplib
+from datetime import date
 from typing import Any
 
 from neuro_san.interfaces.coded_tool import CodedTool
 
+from coded_tools.experimental.opportunity_desk.contribution_ladder import ContributionLadder
 from coded_tools.experimental.opportunity_desk.desk_clock import DeskClock
 from coded_tools.experimental.opportunity_desk.desk_profile import DeskProfile
 from coded_tools.experimental.opportunity_desk.desk_store import DeskStore
@@ -33,7 +35,8 @@ MAX_DIGEST_ITEMS: int = 25
 
 class SendDigest(CodedTool):
     """
-    Collects the matches first seen since the last delivered digest and emails them to the owner.
+    Collects the matches first seen, and the owner's upstream contributions that changed,
+    since the last delivered digest, and emails them to the owner.
 
     Written in plain text by code, not by an LLM, so the digest can never contain a
     score or a reason the assessor did not produce. When SMTP is not configured the
@@ -59,27 +62,28 @@ class SendDigest(CodedTool):
             for row in store.list_opportunities(min_score=profile.min_score(), limit=MAX_DIGEST_ITEMS, since=since)
             if row.get("eligible")
         ]
+        changed: list[dict[str, Any]] = store.contributions(changed_since=since)
         now: str = DeskClock.now_iso()
-        if not rows:
+        if not rows and not changed:
             store.log("digest_skipped", {"since": since}, now)
-            return f"No new matches since {since or 'the first scan'}; nothing to send."
+            return f"No new matches or contribution changes since {since or 'the first scan'}; nothing to send."
 
-        body: str = self._format(rows, since)
-        subject: str = f"{len(rows)} new match(es) from your opportunity desk"
+        body: str = self._format(rows, changed, since)
+        count: int = len(rows) + len(changed)
         if not DigestMailer.is_configured():
-            store.record_digest(now, len(rows), delivered=False)
-            store.log("digest_built", {"items": len(rows), "delivered": False}, now)
+            store.record_digest(now, count, delivered=False)
+            store.log("digest_built", {"items": count, "delivered": False}, now)
             return f"Email is not configured, so here is the digest instead.\n\n{body}"
         try:
-            DigestMailer.send(subject, body)
+            DigestMailer.send(f"{len(rows)} new match(es), {len(changed)} contribution update(s)", body)
         except (smtplib.SMTPException, OSError) as error:
             logger.error("Digest email failed: %s", error)
-            store.record_digest(now, len(rows), delivered=False)
-            store.log("digest_failed", {"items": len(rows), "error": type(error).__name__}, now)
+            store.record_digest(now, count, delivered=False)
+            store.log("digest_failed", {"items": count, "error": type(error).__name__}, now)
             return f"Error: the digest email failed ({type(error).__name__}: {error})."
-        store.record_digest(now, len(rows), delivered=True)
-        store.log("digest_sent", {"items": len(rows)}, now)
-        return f"Emailed a digest of {len(rows)} new match(es) to the owner."
+        store.record_digest(now, count, delivered=True)
+        store.log("digest_sent", {"items": count}, now)
+        return f"Emailed a digest of {len(rows)} new match(es) and {len(changed)} contribution update(s) to the owner."
 
     async def async_invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
         """
@@ -92,13 +96,18 @@ class SendDigest(CodedTool):
         return await asyncio.to_thread(self.invoke, args, sly_data)
 
     @staticmethod
-    def _format(rows: list[dict[str, Any]], since: str | None) -> str:
+    def _format(rows: list[dict[str, Any]], changed: list[dict[str, Any]], since: str | None) -> str:
         """
         :param rows: Stored opportunities, best first.
+        :param changed: The owner's upstream contributions that changed in the period.
         :param since: Start of the period covered, or None for everything so far.
-        :return: The digest as plain text: one block per match with its score and reasons.
+        :return: The digest as plain text: each match with its score and reasons, then each
+            contribution update with the ladder's verdict on what to do next.
         """
-        blocks: list[str] = [f"New matches since {since or 'your first scan'}:"]
+        period: str = since or "your first scan"
+        blocks: list[str] = []
+        if rows:
+            blocks.append(f"New matches since {period}:")
         for row in rows:
             reasons: str = "; ".join(row.get("reasons") or [])
             blocks.append(
@@ -106,5 +115,15 @@ class SendDigest(CodedTool):
                 f"{row.get('url')}\n"
                 f"Why: {reasons}\n"
                 f"Track it with id: {row.get('opportunity_id')}"
+            )
+        if changed:
+            blocks.append(f"Your upstream pull requests and issues that changed since {period}:")
+        today: date = DeskClock.today()
+        for item in changed:
+            blocks.append(
+                f"{item.get('repo')}#{item.get('number')}  {item.get('title')}\n"
+                f"{item.get('url')}\n"
+                f"What changed: {item.get('last_change')}\n"
+                f"Next: {ContributionLadder.verdict(item, today)}"
             )
         return "\n\n".join(blocks)

@@ -18,9 +18,11 @@
     "excluded_terms": ["unpaid", "service bond"],
     "boards": [],
     "contribution_repos": [
-        {"repo": "cognizant-ai-lab/neuro-san-studio", "labels": ["good first issue", "help wanted"]},
-        {"repo": "cognizant-ai-lab/neuro-san", "labels": ["good first issue", "help wanted"]}
+        {"repo": "cognizant-ai-lab/neuro-san-studio", "labels": []},
+        {"repo": "cognizant-ai-lab/neuro-san", "labels": []}
     ],
+    "github_user": "",
+    "upstream_repos": ["cognizant-ai-lab/neuro-san-studio", "cognizant-ai-lab/neuro-san", "cognizant-ai-lab/nsflow"],
     "min_score": 40,
     "evidence_threshold": 0.7,
     "outreach": {

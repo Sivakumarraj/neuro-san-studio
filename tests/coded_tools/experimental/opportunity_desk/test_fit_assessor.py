@@ -14,8 +14,11 @@
 #
 # END COPYRIGHT
 
+from datetime import date
 from unittest import TestCase
+from unittest import mock
 
+from coded_tools.experimental.opportunity_desk.desk_clock import DeskClock
 from coded_tools.experimental.opportunity_desk.desk_profile import EXAMPLE_PROFILE
 from coded_tools.experimental.opportunity_desk.desk_profile import DeskProfile
 from coded_tools.experimental.opportunity_desk.fit_assessor import FitAssessor
@@ -103,9 +106,10 @@ class TestFitAssessor(TestCase):
         result: FitResult = self.assessor.assess(self._role("AI Engineer", "Python.", location="Berlin"))
         self.assertIn("location 'Berlin' is not one you listed", result.reasons)
 
-    def test_contribution_scored_on_skills_alone(self):
-        """An open issue has no seniority or location bar, so it is always eligible."""
-        issue = Posting(
+    @staticmethod
+    def _issue(claimed_by: str = "", maintainer: bool = True, opened: str = "2026-10-25T00:00:00Z") -> Posting:
+        """Build an open repository issue."""
+        return Posting(
             posting_id="github:org/repo:7",
             kind="contribution",
             source="github",
@@ -113,9 +117,30 @@ class TestFitAssessor(TestCase):
             company="org/repo",
             location="open source",
             url="https://github.com/org/repo/issues/7",
-            description="Labels: good first issue\nPython change in a coded tool; 5 years of history in this file.",
-            posted_at="",
+            description="Python change in a coded tool; 5 years of history in this file.",
+            posted_at=opened,
+            claimed_by=claimed_by,
+            filed_by_maintainer=maintainer,
         )
-        result: FitResult = self.assessor.assess(issue)
+
+    def test_fresh_unclaimed_maintainer_issue_scores_high(self):
+        """The issue most likely to be merged: wanted, free and recent. No seniority bar applies."""
+        with mock.patch.object(DeskClock, "today", return_value=date(2026, 10, 31)):
+            result: FitResult = self.assessor.assess(self._issue())
         self.assertTrue(result.eligible)
-        self.assertGreater(result.score, 0)
+        self.assertGreaterEqual(result.score, 60)
+        self.assertIn("filed by a maintainer, so the fix is wanted", result.reasons)
+        self.assertIn("opened 6 day(s) ago", result.reasons)
+
+    def test_claimed_issue_is_not_open_work(self):
+        """Someone else is on it: ineligible, and the reason names them."""
+        result: FitResult = self.assessor.assess(self._issue(claimed_by="someone"))
+        self.assertFalse(result.eligible)
+        self.assertIn("already assigned to someone", result.reasons)
+
+    def test_old_outside_issue_scores_lower(self):
+        """Without the maintainer and freshness signals the same issue ranks lower."""
+        with mock.patch.object(DeskClock, "today", return_value=date(2026, 10, 31)):
+            fresh: FitResult = self.assessor.assess(self._issue())
+            old: FitResult = self.assessor.assess(self._issue(maintainer=False, opened="2026-01-01T00:00:00Z"))
+        self.assertLess(old.score, fresh.score)

@@ -15,7 +15,10 @@
 # END COPYRIGHT
 
 import re
+from datetime import date
+from datetime import datetime
 
+from coded_tools.experimental.opportunity_desk.desk_clock import DeskClock
 from coded_tools.experimental.opportunity_desk.desk_profile import DeskProfile
 from coded_tools.experimental.opportunity_desk.fit_result import FitResult
 from coded_tools.experimental.opportunity_desk.posting import Posting
@@ -34,6 +37,13 @@ SENIOR_TITLE_TERMS: tuple[str, ...] = ("senior", "sr.", "staff", "principal", "l
 ENTRY_TERMS: tuple[str, ...] = ("fresher", "new grad", "graduate", "entry level", "entry-level", "intern", "trainee")
 
 SKILL_POINTS: int = 50
+# Contributions: an open issue a maintainer filed, nobody has claimed and is still fresh is
+# the work most likely to be reviewed and merged, so those signals outweigh skill overlap.
+CONTRIBUTION_SKILL_POINTS: int = 40
+UNCLAIMED_POINTS: int = 25
+MAINTAINER_POINTS: int = 20
+FRESH_POINTS: int = 15
+FRESH_DAYS: int = 30
 TITLE_POINTS: int = 20
 LOCATION_POINTS: int = 15
 ENTRY_POINTS: int = 15
@@ -53,8 +63,9 @@ class FitAssessor:
     however well it scores, because a high score on a role the owner cannot take is
     worse than no result.
 
-    Contributions (repository issues) are scored on skills alone and are always
-    eligible: an open issue has no location or seniority bar.
+    Contributions (repository issues) have no location or seniority bar. They score on
+    skills, on nobody being assigned, on a maintainer having filed them and on being
+    fresh; an issue already assigned to someone is ineligible.
     """
 
     def __init__(self, profile: DeskProfile):
@@ -78,7 +89,7 @@ class FitAssessor:
             reasons.append("mentions none of your skills")
 
         if posting.kind == "contribution":
-            return FitResult(score=round(skill_score * 100 / SKILL_POINTS), eligible=True, reasons=tuple(reasons))
+            return self._contribution_fit(posting, len(matched), reasons)
 
         score: int = skill_score + self._title_points(posting, reasons) + self._location_points(posting, reasons)
         if any(self._mentions(text, term) for term in ENTRY_TERMS):
@@ -88,6 +99,43 @@ class FitAssessor:
         blockers: list[str] = self._blockers(posting, text)
         reasons.extend(blockers)
         return FitResult(score=min(score, 100), eligible=not blockers, reasons=tuple(reasons))
+
+    @staticmethod
+    def _contribution_fit(posting: Posting, matched_skills: int, reasons: list[str]) -> FitResult:
+        """
+        :param posting: An open issue in a tracked repository.
+        :param matched_skills: How many of the owner's skills the issue mentions.
+        :param reasons: Reasons so far; one is added per signal.
+        :return: The fit; an issue someone is already assigned to is ineligible.
+        """
+        score: int = round(CONTRIBUTION_SKILL_POINTS * min(1.0, matched_skills / SKILLS_FOR_FULL_MARKS))
+        if posting.claimed_by:
+            reasons.append(f"already assigned to {posting.claimed_by}")
+            return FitResult(score=score, eligible=False, reasons=tuple(reasons))
+        score += UNCLAIMED_POINTS
+        reasons.append("nobody is assigned")
+        if posting.filed_by_maintainer:
+            score += MAINTAINER_POINTS
+            reasons.append("filed by a maintainer, so the fix is wanted")
+        opened: date | None = FitAssessor._date(posting.posted_at)
+        if opened is not None:
+            age: int = (DeskClock.today() - opened).days
+            if age <= FRESH_DAYS:
+                score += FRESH_POINTS
+            reasons.append(f"opened {age} day(s) ago")
+        reasons.append(f"{posting.comments} comment(s)")
+        return FitResult(score=min(score, 100), eligible=True, reasons=tuple(reasons))
+
+    @staticmethod
+    def _date(stamp: str) -> date | None:
+        """
+        :param stamp: An ISO 8601 timestamp, possibly ending in "Z", or empty.
+        :return: Its date, or None when there is no usable timestamp.
+        """
+        try:
+            return datetime.fromisoformat(stamp.replace("Z", "+00:00")).date()
+        except ValueError:
+            return None
 
     def _title_points(self, posting: Posting, reasons: list[str]) -> int:
         """

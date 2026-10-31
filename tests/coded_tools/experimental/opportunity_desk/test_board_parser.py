@@ -69,6 +69,35 @@ ASHBY_RESPONSE: dict = {
         {"id": "b2", "title": "Hidden", "isListed": False},
     ]
 }
+# Shape of https://api.github.com/search/issues: pull requests carry a "pull_request" object.
+GITHUB_SEARCH: dict = {
+    "total_count": 2,
+    "items": [
+        {
+            "number": 1297,
+            "title": "docs: add Legacy Business-Rule Extractor to Community Projects",
+            "state": "closed",
+            "comments": 1,
+            "html_url": "https://github.com/cognizant-ai-lab/neuro-san-studio/pull/1297",
+            "repository_url": "https://api.github.com/repos/cognizant-ai-lab/neuro-san-studio",
+            "pull_request": {"merged_at": "2026-08-11T00:09:00Z"},
+            "created_at": "2026-08-04T13:46:44Z",
+            "updated_at": "2026-08-11T00:09:00Z",
+            "closed_at": "2026-08-11T00:09:00Z",
+        },
+        {
+            "number": 1550,
+            "title": "Score networks over every repeat",
+            "state": "open",
+            "comments": 0,
+            "html_url": "https://github.com/cognizant-ai-lab/neuro-san-studio/issues/1550",
+            "repository_url": "https://api.github.com/repos/cognizant-ai-lab/neuro-san-studio",
+            "created_at": "2026-10-31T09:00:00Z",
+            "updated_at": "2026-10-31T09:00:00Z",
+            "closed_at": None,
+        },
+    ],
+}
 GITHUB_ISSUES: list = [
     {
         "number": 12,
@@ -77,6 +106,19 @@ GITHUB_ISSUES: list = [
         "labels": [{"name": "good first issue"}],
         "body": "Python change.",
         "created_at": "2026-10-01T00:00:00Z",
+        "author_association": "MEMBER",
+        "assignees": [],
+        "comments": 0,
+    },
+    {
+        "number": 14,
+        "title": "Taken already",
+        "html_url": "https://github.com/org/repo/issues/14",
+        "body": "Python change.",
+        "created_at": "2026-10-02T00:00:00Z",
+        "author_association": "NONE",
+        "assignees": [{"login": "someone"}],
+        "comments": 3,
     },
     {"number": 13, "title": "A pull request", "pull_request": {"url": "x"}},
 ]
@@ -114,12 +156,44 @@ class TestBoardParser(TestCase):
         self.assertEqual(len(postings), 1)
         self.assertEqual(postings[0].location, "Bengaluru, Hyderabad, Remote")
 
-    def test_github_issues_skip_pull_requests(self):
-        """The issues endpoint lists pull requests too; they are not open work."""
+    def test_github_issues_skip_pull_requests_and_record_claims(self):
+        """The issues endpoint lists pull requests too; they are not open work. Claims are kept."""
         postings = BoardParser.parse_issues("org/repo", GITHUB_ISSUES)
-        self.assertEqual([posting.posting_id for posting in postings], ["github:org/repo:12"])
+        self.assertEqual([posting.posting_id for posting in postings], ["github:org/repo:12", "github:org/repo:14"])
         self.assertEqual(postings[0].kind, "contribution")
         self.assertIn("good first issue", postings[0].description)
+        self.assertTrue(postings[0].filed_by_maintainer)
+        self.assertEqual(postings[0].claimed_by, "")
+        self.assertEqual(postings[1].claimed_by, "someone")
+        self.assertEqual(postings[1].comments, 3)
+
+    def test_unlabelled_repositories_read_every_open_issue(self):
+        """Upstream labels nothing, so no labels must mean no label filter, not an empty one."""
+        self.assertEqual(
+            BoardParser.issue_urls({"repo": "o/r", "labels": []}),
+            ["https://api.github.com/repos/o/r/issues?state=open&per_page=50"],
+        )
+
+    def test_contributions_search_and_parse(self):
+        """One search covers every repository; merged pull requests are told apart from closed ones."""
+        url = BoardParser.contributions_url(
+            "Sivakumarraj", ["cognizant-ai-lab/neuro-san-studio", "cognizant-ai-lab/nsflow"]
+        )
+        self.assertIn(
+            "q=author:Sivakumarraj%20repo:cognizant-ai-lab/neuro-san-studio%20repo:cognizant-ai-lab/nsflow", url
+        )
+        with self.assertRaises(ValueError):
+            BoardParser.contributions_url("bad user", ["o/r"])
+        with self.assertRaises(ValueError):
+            BoardParser.contributions_url("user", [])
+        records = BoardParser.parse_contributions(GITHUB_SEARCH)
+        self.assertEqual(records[0].get("item_key"), "cognizant-ai-lab/neuro-san-studio#1297")
+        self.assertEqual(records[0].get("kind"), "pull_request")
+        self.assertTrue(records[0].get("merged"))
+        self.assertEqual(records[1].get("kind"), "issue")
+        self.assertFalse(records[1].get("merged"))
+        with self.assertRaises(ValueError):
+            BoardParser.parse_contributions({"message": "API rate limit exceeded"})
 
     def test_urls_are_built_only_from_safe_names(self):
         """A slug or repository that could rewrite the URL is refused."""

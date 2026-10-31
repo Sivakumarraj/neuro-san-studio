@@ -45,6 +45,7 @@
             "Scan my boards and show me the best new matches.",
             "What is in my pipeline that I have shortlisted?",
             "What does the MAKER paper from Cognizant AI Lab propose, with sources?",
+            "How are my upstream pull requests and issues doing?",
             "Draft a short note to example-recruiter about the evidence checker I just built.",
             "I sent example-recruiter an email today about my research desk; record it.",
         ]
@@ -81,8 +82,9 @@ Rules you must not break:
   check. Never write or edit a message yourself. Remind the owner that they send it.
 - When research comes back with unverified claims, keep them separate from the
   verified ones and say how many were verified.
-- When the inquiry is the scheduled "Daily scan", ask for a board scan and then for
-  the digest to be sent, and reply with one line saying what happened.
+- When the inquiry is the scheduled "Daily scan", ask for a board scan, then a check of
+  the owner's upstream contributions, then for the digest to be sent, and reply with
+  one line saying what happened.
 """,
             "tools": ["research_analyst", "opportunity_scout", "outreach_writer"]
         },
@@ -100,8 +102,8 @@ paper-finding and fact-checking inquiries, and nothing about tracking openings o
 writing messages. Reply only with the Determine JSON described below.
 
 If the mode is 'Fulfill' or 'Follow up':
-1. Search with web_search. Also use paper_search when the question is about papers
-   or academic results.
+1. Search with web_search. If it fails or finds nothing useful, use backup_search.
+   Also use paper_search when the question is about papers or academic results.
 2. Read the two to four most relevant pages with page_reader.
 3. Write your findings as claims. Each claim has a source_url you actually read and a
    quote of at least six words copied exactly from that page. No quote, no claim.
@@ -117,7 +119,7 @@ Determine JSON: {"Name": "research_analyst", "Inquiry": <the inquiry>, "Mode": "
 Fulfill JSON: {"Name": "research_analyst", "Inquiry": <the inquiry>, "Mode": "Fulfill",
 "Response": <your answer>}
 """,
-            "tools": ["web_search", "paper_search", "page_reader", "evidence_checker", "senior_analyst"]
+            "tools": ["web_search", "backup_search", "paper_search", "page_reader", "evidence_checker", "senior_analyst"]
         },
 
         # The only agent on the stronger model, called only after a failed evidence check.
@@ -148,9 +150,9 @@ Fulfill JSON: {"Name": "research_analyst", "Inquiry": <the inquiry>, "Mode": "Fu
 A first attempt at this question failed its evidence check. Read the failed check to
 see which claims did not hold up and why.
 
-1. Search with web_search and read the pages most likely to state the answer
-   directly, preferring primary sources: the paper, the official documentation,
-   the organization's own page.
+1. Search with web_search (backup_search if it fails) and read the pages most likely
+   to state the answer directly, preferring primary sources: the paper, the official
+   documentation, the organization's own page.
 2. Write claims, each with a source_url you read and a quote of at least six words
    copied exactly from it.
 3. Call evidence_checker once with those claims.
@@ -158,20 +160,20 @@ see which claims did not hold up and why.
    "Not verified", and the verified count. If little holds up, say plainly that the
    question could not be answered from reliable sources. Do not guess.
 """,
-            "tools": ["web_search", "page_reader", "evidence_checker"]
+            "tools": ["web_search", "backup_search", "page_reader", "evidence_checker"]
         },
 
         {
             "name": "opportunity_scout",
             "function": ${aaosa_call} {
-                "description": "Finds openings on the owner's careers boards and open issues in the repositories they follow, scores each against the owner's profile, tracks them through a pipeline, and emails the owner a digest of new matches."
+                "description": "Finds openings on the owner's careers boards and open issues in the repositories they follow, scores each against the owner's profile, tracks them through a pipeline, follows the owner's own upstream pull requests and issues, and emails the owner a digest."
             },
             "instructions": """
 You look after the owner's pipeline of openings and open-source issues.
 
 If the mode is 'Determine', call no tools. Claim inquiries about scanning boards,
-new matches, the pipeline, changing the status of an opening, the audit log and the
-digest. Reply only with the Determine JSON described below.
+new matches, open-source issues to work on, the pipeline, changing the status of an
+opening, the owner's own pull requests and issues, the audit log and the digest. Reply only with the Determine JSON described below.
 
 If the mode is 'Fulfill' or 'Follow up':
 - To look for new openings or issues, call board_scanner.
@@ -179,6 +181,8 @@ If the mode is 'Fulfill' or 'Follow up':
   when one is asked for). To show past decisions, use action "audit".
 - To change an opening's status, call pipeline_tracker with action "update", the
   opportunity_id and the new status.
+- To check the owner's own pull requests and issues upstream, call contribution_tracker.
+  Give each item's verdict exactly as returned, and list what changed since the last check.
 - To send the digest, call digest_sender.
 
 Report scores and reasons exactly as the tools return them. Never rescore, rank by
@@ -190,7 +194,7 @@ Determine JSON: {"Name": "opportunity_scout", "Inquiry": <the inquiry>, "Mode": 
 Fulfill JSON: {"Name": "opportunity_scout", "Inquiry": <the inquiry>, "Mode": "Fulfill",
 "Response": <your answer>}
 """,
-            "tools": ["board_scanner", "pipeline_tracker", "digest_sender"]
+            "tools": ["board_scanner", "pipeline_tracker", "contribution_tracker", "digest_sender"]
         },
 
         {
@@ -281,6 +285,18 @@ Fulfill JSON: {"Name": "outreach_writer", "Inquiry": <the inquiry>, "Mode": "Ful
                 }
             },
             "class": "pipeline_tracker.PipelineTracker"
+        },
+        {
+            "name": "contribution_tracker",
+            "function": {
+                "description": "Checks the owner's own pull requests and issues in the upstream repositories they contribute to, says what changed since the last check, and gives each a verdict on what to do next.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            "class": "track_contributions.TrackContributions"
         },
         {
             "name": "digest_sender",
@@ -386,9 +402,19 @@ Fulfill JSON: {"Name": "outreach_writer", "Inquiry": <the inquiry>, "Mode": "Ful
 
         # ---------- Toolbox tools ----------
 
-        # DuckDuckGo search needs no API key.
+        # OpenAI's web search, on the same OPENAI_API_KEY the agents use. Its model defaults
+        # to the toolbox's choice; OPPORTUNITY_DESK_SEARCH_MODEL overrides it.
         {
             "name": "web_search",
+            "toolbox": "openai_search",
+            "args": {
+                "openai_model": ${?OPPORTUNITY_DESK_SEARCH_MODEL}
+            }
+        },
+        # DuckDuckGo needs no key but rate-limits and can return nothing (studio issue
+        # #1531), so it is only the fallback.
+        {
+            "name": "backup_search",
             "toolbox": "ddgs_search"
         },
         {

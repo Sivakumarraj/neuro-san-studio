@@ -29,8 +29,10 @@ from coded_tools.experimental.opportunity_desk.pipeline_tracker import PipelineT
 from coded_tools.experimental.opportunity_desk.record_outreach import RecordOutreach
 from coded_tools.experimental.opportunity_desk.scan_boards import ScanBoards
 from coded_tools.experimental.opportunity_desk.send_digest import SendDigest
+from coded_tools.experimental.opportunity_desk.track_contributions import TrackContributions
 from tests.coded_tools.experimental.opportunity_desk.desk_test_environment import DeskTestEnvironment
 from tests.coded_tools.experimental.opportunity_desk.fake_page_source import FakePageSource
+from tests.coded_tools.experimental.opportunity_desk.test_board_parser import GITHUB_SEARCH
 from tests.coded_tools.experimental.opportunity_desk.test_board_parser import GREENHOUSE_RESPONSE
 from tests.coded_tools.experimental.opportunity_desk.test_board_parser import LEVER_RESPONSE
 
@@ -39,6 +41,7 @@ BOARDS: list[dict] = [
     {"provider": "lever", "slug": "leverdemo", "company": "Lever"},
     {"provider": "ashby", "slug": "gone", "company": "Gone Inc"},
 ]
+UPSTREAM: list[str] = ["cognizant-ai-lab/neuro-san-studio"]
 PAGE: str = "Cognizant AI Lab reports that MAKER solved over one million LLM steps with zero errors."
 
 
@@ -54,10 +57,12 @@ class TestDeskTools(IsolatedAsyncioTestCase):
             "https://boards-api.greenhouse.io/v1/boards/acme/": GREENHOUSE_RESPONSE,
             "https://api.lever.co/v0/postings/leverdemo": LEVER_RESPONSE,
             "https://lab.example.com/maker": PAGE,
+            "https://api.github.com/search/issues": GITHUB_SEARCH,
         }
         self._patches = [
             mock.patch.object(ScanBoards, "source_class", FakePageSource),
             mock.patch.object(CheckEvidence, "source_class", FakePageSource),
+            mock.patch.object(TrackContributions, "source_class", FakePageSource),
         ]
         for patch in self._patches:
             patch.start()
@@ -198,6 +203,38 @@ class TestDeskTools(IsolatedAsyncioTestCase):
                 self.assertEqual(send.call_count, 1)
                 second = await SendDigest().async_invoke({}, {})
             self.assertIn("nothing to send", second)
+
+    async def test_contribution_tracker_reports_changes_once_with_verdicts(self):
+        """First check tracks everything; an unchanged second check reports no changes."""
+        with (
+            DeskTestEnvironment(github_user="Sivakumarraj", upstream_repos=UPSTREAM),
+            mock.patch.object(DeskClock, "today", return_value=date(2026, 10, 31)),
+        ):
+            first = json.loads(await TrackContributions().async_invoke({}, {}))
+            self.assertEqual(first.get("tracked"), 2)
+            self.assertEqual(len(first.get("changes")), 2)
+            verdicts = {item.get("number"): item.get("verdict") for item in first.get("items")}
+            self.assertTrue(verdicts.get(1297).startswith("merged"))
+            self.assertIn("waiting for a maintainer", verdicts.get(1550))
+            again = json.loads(await TrackContributions().async_invoke({}, {}))
+            self.assertEqual(again.get("changes"), [])
+
+    async def test_contribution_tracker_needs_a_login(self):
+        """The example profile names nobody, so there is nothing to track."""
+        with DeskTestEnvironment():
+            result = await TrackContributions().async_invoke({}, {})
+        self.assertTrue(result.startswith("Error: the profile has no github_user"))
+
+    async def test_digest_carries_contribution_updates(self):
+        """A digest with no new matches still goes out when upstream work changed."""
+        with DeskTestEnvironment(
+            boards=[], contribution_repos=[], github_user="Sivakumarraj", upstream_repos=UPSTREAM
+        ):
+            await TrackContributions().async_invoke({}, {})
+            with mock.patch.object(DigestMailer, "is_configured", return_value=False):
+                text = await SendDigest().async_invoke({}, {})
+        self.assertIn("Your upstream pull requests and issues that changed", text)
+        self.assertIn("Next: merged", text)
 
     async def test_recorder_defaults_to_today(self):
         """Without a date the event is recorded for today."""

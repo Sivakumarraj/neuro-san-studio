@@ -101,3 +101,26 @@ class TestDeskStore(TestCase):
         self.store.log("scan", {"new": 1}, "2026-10-29T00:00:00+00:00")
         self.store.log("outreach_blocked", {"contact_id": "c"}, "2026-10-30T00:00:00+00:00")
         self.assertEqual([entry.get("action") for entry in self.store.audit_tail()], ["outreach_blocked", "scan"])
+
+    def test_contribution_changes_are_reported_once(self):
+        """New, merged and commented items are reported; an unchanged second check reports nothing."""
+        record = {
+            "item_key": "o/r#5",
+            "repo": "o/r",
+            "number": 5,
+            "kind": "pull_request",
+            "title": "Fix",
+            "state": "open",
+            "merged": False,
+            "comments": 0,
+            "url": "https://github.com/o/r/pull/5",
+            "opened_at": "2026-10-01T00:00:00Z",
+        }
+        first = self.store.sync_contributions([record], "2026-10-30T00:00:00+00:00")
+        self.assertEqual(first[0].get("change"), "now tracked (open)")
+        self.assertEqual(self.store.sync_contributions([record], "2026-10-30T01:00:00+00:00"), [])
+        merged = record | {"state": "closed", "merged": True, "comments": 2}
+        later = self.store.sync_contributions([merged], "2026-10-31T00:00:00+00:00")
+        self.assertEqual(later[0].get("change"), "merged, 2 new comment(s)")
+        self.assertEqual(len(self.store.contributions(changed_since="2026-10-30T12:00:00+00:00")), 1)
+        self.assertTrue(self.store.contributions()[0].get("merged"))

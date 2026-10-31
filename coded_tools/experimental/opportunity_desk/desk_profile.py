@@ -141,6 +141,18 @@ class DeskProfile:
         """
         return list(self._data.get("contribution_repos") or [])
 
+    def github_user(self) -> str:
+        """
+        :return: The owner's GitHub login, whose upstream pull requests and issues are tracked, or "".
+        """
+        return str(self._data.get("github_user") or "")
+
+    def upstream_repos(self) -> list[str]:
+        """
+        :return: The "owner/name" repositories the owner contributes to, for contribution tracking.
+        """
+        return [str(repo) for repo in self._data.get("upstream_repos") or []]
+
     def min_score(self) -> int:
         """
         :return: The score a posting needs before it is shown as a match. Defaults to 40.

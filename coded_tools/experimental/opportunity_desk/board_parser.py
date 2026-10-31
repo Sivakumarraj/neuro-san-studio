@@ -39,12 +39,17 @@ BOARD_URLS: dict[str, str] = {
     "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
 }
-GITHUB_ISSUES_URL: str = "https://api.github.com/repos/{repo}/issues?state=open&per_page=50&labels={label}"
+GITHUB_ISSUES_URL: str = "https://api.github.com/repos/{repo}/issues?state=open&per_page=50"
+# One search returns the owner's pull requests and issues across every tracked repository.
+GITHUB_SEARCH_URL: str = "https://api.github.com/search/issues?q={query}&sort=updated&order=desc&per_page=50"
+# GitHub's author_association values for people with commit rights to the repository.
+MAINTAINER_ASSOCIATIONS: frozenset[str] = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 
 
 class BoardParser:
     """
-    Builds board URLs and turns each provider's JSON into Postings. No network access.
+    Builds board and GitHub URLs and turns each provider's JSON into Postings or
+    contribution records. No network access.
 
     The field names follow each provider's public job-board API: Greenhouse's
     "jobs" list with HTML-escaped "content", Lever's top-level list whose
@@ -72,13 +77,63 @@ class BoardParser:
         """
         :param spec: A profile entry with "repo" ("owner/name") and optional "labels".
         :return: One open-issues URL per label, or one unfiltered URL when no labels are given.
+            Some repositories label nothing, so an empty list means every open issue.
         :raises ValueError: For a malformed repository name.
         """
-        repo: str = str(spec.get("repo", ""))
-        if not REPO_PATTERN.match(repo):
-            raise ValueError(f"malformed repository name '{repo}'; expected owner/name")
-        labels: list[str] = list(spec.get("labels") or [""])
-        return [GITHUB_ISSUES_URL.format(repo=repo, label=quote(label)) for label in labels]
+        repo: str = BoardParser._checked_repo(spec.get("repo"))
+        base: str = GITHUB_ISSUES_URL.format(repo=repo)
+        labels: list[str] = list(spec.get("labels") or [])
+        return [f"{base}&labels={quote(label)}" for label in labels] or [base]
+
+    @staticmethod
+    def contributions_url(user: str, repos: list[str]) -> str:
+        """
+        :param user: The owner's GitHub login.
+        :param repos: The "owner/name" repositories to look in.
+        :return: A GitHub search URL for every pull request and issue the user opened in those repositories.
+        :raises ValueError: For a malformed login or repository name, or no repositories.
+        """
+        if not SLUG_PATTERN.match(user):
+            raise ValueError(f"malformed GitHub login '{user}'")
+        if not repos:
+            raise ValueError("the profile lists no upstream_repos to track contributions in")
+        qualifiers: list[str] = [f"author:{user}"] + [f"repo:{BoardParser._checked_repo(repo)}" for repo in repos]
+        return GITHUB_SEARCH_URL.format(query=quote(" ".join(qualifiers), safe=":/"))
+
+    @staticmethod
+    def parse_contributions(document: Any) -> list[dict[str, Any]]:
+        """
+        :param document: The decoded JSON from the GitHub search endpoint.
+        :return: One record per pull request or issue: repo, number, kind, title, state,
+            merged, comments, url and the opened, updated and closed timestamps.
+        :raises ValueError: When the document has no "items" list.
+        """
+        items: Any = document.get("items") if isinstance(document, dict) else None
+        if not isinstance(items, list):
+            raise ValueError("GitHub search response has no 'items' list")
+        records: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            pull: Any = item.get("pull_request")
+            repo: str = str(item.get("repository_url", "")).removeprefix("https://api.github.com/repos/")
+            records.append(
+                {
+                    "item_key": f"{repo}#{item.get('number')}",
+                    "repo": repo,
+                    "number": int(item.get("number") or 0),
+                    "kind": "pull_request" if isinstance(pull, dict) else "issue",
+                    "title": str(item.get("title", "")),
+                    "state": str(item.get("state", "")),
+                    "merged": bool(isinstance(pull, dict) and pull.get("merged_at")),
+                    "comments": int(item.get("comments") or 0),
+                    "url": str(item.get("html_url", "")),
+                    "opened_at": str(item.get("created_at") or ""),
+                    "updated_at": str(item.get("updated_at") or ""),
+                    "closed_at": str(item.get("closed_at") or ""),
+                }
+            )
+        return records
 
     @staticmethod
     def parse_board(board: dict[str, Any], document: Any) -> list[Posting]:
@@ -119,6 +174,9 @@ class BoardParser:
             labels: list[str] = [
                 label.get("name", "") for label in issue.get("labels") or [] if isinstance(label, dict)
             ]
+            assignees: list[str] = [
+                str(person.get("login", "")) for person in issue.get("assignees") or [] if isinstance(person, dict)
+            ]
             postings.append(
                 Posting(
                     posting_id=f"github:{repo}:{issue.get('number')}",
@@ -130,9 +188,24 @@ class BoardParser:
                     url=str(issue.get("html_url", "")),
                     description=BoardParser._clip(f"Labels: {', '.join(labels)}\n{issue.get('body') or ''}"),
                     posted_at=str(issue.get("created_at") or ""),
+                    claimed_by=", ".join(assignees),
+                    filed_by_maintainer=str(issue.get("author_association", "")) in MAINTAINER_ASSOCIATIONS,
+                    comments=int(issue.get("comments") or 0),
                 )
             )
         return postings
+
+    @staticmethod
+    def _checked_repo(repo: Any) -> str:
+        """
+        :param repo: A repository name from the profile.
+        :return: The name, once it is known to be a plain "owner/name".
+        :raises ValueError: For anything else, since it goes into a URL.
+        """
+        name: str = str(repo or "")
+        if not REPO_PATTERN.match(name):
+            raise ValueError(f"malformed repository name '{name}'; expected owner/name")
+        return name
 
     @staticmethod
     def _jobs(document: Any, provider: str) -> list[dict[str, Any]]:

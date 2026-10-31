@@ -41,3 +41,8 @@ class Posting:
     description: str
     # ISO 8601 when the provider gives one, otherwise empty.
     posted_at: str
+    # Contributions only: who the issue is assigned to (empty when nobody), whether a
+    # maintainer filed it, and how many comments it has. A claimed issue is not open work.
+    claimed_by: str = ""
+    filed_by_maintainer: bool = False
+    comments: int = 0

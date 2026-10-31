@@ -31,8 +31,6 @@ logger = logging.getLogger(__name__)
 MAX_CONCURRENT_FETCHES: int = 4
 
 
-# One question per class, so one public method.
-# pylint: disable=too-few-public-methods
 class BoardReader:
     """
     Reads every board and repository the profile lists, and reports each failure by name.
@@ -74,6 +72,21 @@ class BoardReader:
                 # The same issue can carry two tracked labels; keep one copy.
                 postings[posting.posting_id] = posting
         return list(postings.values()), errors, len(jobs)
+
+    async def read_contributions(self, user: str, repos: list[str]) -> tuple[list[dict[str, Any]], str | None]:
+        """
+        :param user: The owner's GitHub login.
+        :param repos: Repositories to look in.
+        :return: The owner's pull requests and issues there and no error, or nothing and the error.
+        """
+        try:
+            url: str = BoardParser.contributions_url(user, repos)
+            async with self._limit:
+                document: Any = await self._source.fetch_json(url)
+            return BoardParser.parse_contributions(document), None
+        except (ValueError, ClientError, asyncio.TimeoutError) as error:
+            logger.warning("Could not read contributions for %s: %s", user, error)
+            return [], f"github search for {user}: {error}"
 
     async def _read_board(self, board: dict[str, Any]) -> tuple[list[Posting], str | None]:
         """

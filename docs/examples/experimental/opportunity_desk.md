@@ -31,17 +31,20 @@ Four rules shape the network:
 | `desk_lead` | LLM, front man | Routes each request with AAOSA claims and composes the answer |
 | `research_analyst` | LLM | Searches, reads pages, writes claims with verbatim quotes, runs the evidence check |
 | `senior_analyst` | LLM, stronger model | Re-researches a question whose evidence check returned `ESCALATE` |
-| `opportunity_scout` | LLM | Scans boards, shows and updates the pipeline, sends the digest |
+| `opportunity_scout` | LLM | Scans boards, keeps the pipeline, follows upstream work, sends the digest |
 | `outreach_writer` | LLM | Drafts messages and records what the owner sent or received |
-| `board_scanner` | Coded tool | Reads boards and repositories, scores postings, stores the new ones |
+| `board_scanner` | Coded tool | Reads boards and repositories, scores postings, stores new ones |
 | `pipeline_tracker` | Coded tool | Lists, updates and audits the pipeline; status values are checked in code |
-| `digest_sender` | Coded tool | Emails the owner the matches found since the last delivered digest |
+| `contribution_tracker` | Coded tool | Follows the owner's upstream pull requests and issues, with a verdict each |
+| `digest_sender` | Coded tool | Emails the owner new matches and contribution updates since the last digest |
 | `evidence_checker` | Coded tool | Fetches each cited page and checks the quote is on it; returns the verdict |
 | `outreach_gate` | Coded tool | Checks a draft against the contact's status, the cadence and the wording rules |
 | `outreach_recorder` | Coded tool | Records a message the owner sent or received |
 
-Web search (`ddgs_search`, no key needed), arXiv search and page reading come from the
-[toolbox](../../toolbox.md). Every page the desk fetches goes through the studio's SSRF-hardened `SafeFetch`.
+Web search, arXiv search and page reading come from the [toolbox](../../toolbox.md). Web search is
+`openai_search`, on the same `OPENAI_API_KEY` the agents use (set `OPPORTUNITY_DESK_SEARCH_MODEL` to change its
+model). `ddgs_search` needs no key but rate-limits and can come back empty, so it is only the fallback. Every
+page the desk fetches goes through the studio's SSRF-hardened `SafeFetch`.
 
 ### Evidence check and escalation
 
@@ -60,8 +63,30 @@ The check proves the quoted text is on the cited page. It does not prove the cla
 `FitAssessor` scores a posting out of 100 from skills named as whole words, a target title, an accepted
 location and an entry-level signal, with a reason for every point. Hard requirements make a posting
 ineligible whatever its score: more years of experience than the owner's limit, a graduation batch that
-excludes the owner, a senior title, or a term the owner excluded. Open issues in tracked repositories are
-scored on skills alone.
+excludes the owner, a senior title, or a term the owner excluded.
+
+Open issues in the repositories under `contribution_repos` are scored differently, because the issue most
+likely to be reviewed and merged is one a maintainer filed, nobody has claimed and that is still fresh:
+skills earn up to 40 points, nobody being assigned 25, a maintainer having filed it 20, and being under 30
+days old 15. An issue already assigned to someone is ineligible.
+
+### Contribution tracking
+
+`contribution_tracker` runs one GitHub search for every pull request and issue the owner (`github_user`)
+opened in the repositories under `upstream_repos`, stores their state, and reports only what changed since the
+last check: newly tracked, merged, closed, or new comments. Each item gets a verdict from
+`ContributionLadder`, which makes waiting the default:
+
+| Item | Verdict |
+|---|---|
+| Pull request, open up to 14 days | Wait; silence is normal |
+| Pull request, open 15 to 30 days | Keep waiting, and line up a second contribution |
+| Pull request, open 31 to 45 days | One short technical question on the pull request is fair, once |
+| Pull request, open longer | Stalled: ask once if not yet done, then put the effort elsewhere |
+| Pull request, closed unmerged | Read the reviewer's reason before trying again |
+| Issue with no reply after 14 days | Do not ping; if it is a bug, a small pull request is the next move |
+
+The scheduled `Daily scan` runs a board scan, then this check, then the digest.
 
 The scoring is keyword-based on purpose: every point is traceable. It will miss a posting that describes a
 skill in other words.
@@ -113,7 +138,9 @@ the desk says so in every scan.
     "target_titles": ["ai engineer", "ml engineer"],
     "locations": ["bengaluru", "remote"],
     "boards": [{"provider": "greenhouse", "slug": "<board slug>", "company": "<name>"}],
-    "contribution_repos": [{"repo": "cognizant-ai-lab/neuro-san-studio", "labels": ["good first issue"]}],
+    "contribution_repos": [{"repo": "cognizant-ai-lab/neuro-san-studio", "labels": []}],
+    "github_user": "<your GitHub login>",
+    "upstream_repos": ["cognizant-ai-lab/neuro-san-studio", "cognizant-ai-lab/neuro-san"],
     "outreach": {"max_unanswered": 1, "cooldown_days": 7, "max_words": 180, "banned_phrases": []},
     "contacts": {
         "<contact id>": {
@@ -127,7 +154,8 @@ the desk says so in every scan.
 ```
 
 A board slug is the last part of the employer's careers URL: `boards.greenhouse.io/<slug>`,
-`jobs.lever.co/<slug>` or `jobs.ashbyhq.com/<slug>`.
+`jobs.lever.co/<slug>` or `jobs.ashbyhq.com/<slug>`. An empty `labels` list reads every open issue; use it
+for repositories that do not label their issues.
 
 ---
 
@@ -159,7 +187,8 @@ to an unprivileged user.
 
 The manifest [manifest_opportunity_desk.hocon](../../../registries/manifest_opportunity_desk.hocon) serves
 only this network and uses neuro-san's `periodic` scheduler to send `Daily scan` every day at 03:01 UTC.
-The scan and the digest are coded tools, so a scheduled run costs only the agents' routing.
+The scan, the contribution check and the digest are coded tools, so a scheduled run costs only the agents'
+routing. Web searches are the main variable cost: OpenAI bills each search call on top of its tokens.
 
 On Render, [render.yaml](../../../render.yaml) describes the service:
 
@@ -182,6 +211,7 @@ keep untrusted services out of that workspace.
 
 * "Scan my boards and show me the best new matches."
 * "Move greenhouse:acme:4011 to applied."
+* "How are my upstream pull requests and issues doing?"
 * "What does the MAKER paper propose, with sources?"
 * "I received a reply from example-recruiter today; record it, then draft an answer about the evidence
   checker."

@@ -36,6 +36,27 @@ DATABASE_NAME: str = "desk.sqlite3"
 STATUSES: tuple[str, ...] = ("new", "shortlisted", "applied", "interviewing", "offer", "rejected", "dropped")
 DIRECTIONS: tuple[str, ...] = ("sent", "received")
 
+# The columns every contribution write sets, in the order sync_contributions passes them.
+CONTRIBUTION_COLUMNS: tuple[str, ...] = (
+    "repo",
+    "number",
+    "kind",
+    "title",
+    "state",
+    "merged",
+    "comments",
+    "url",
+    "opened_at",
+)
+INSERT_CONTRIBUTION: str = (
+    f"INSERT INTO contributions ({', '.join(CONTRIBUTION_COLUMNS)}, item_key, first_seen, last_change, last_changed)"
+    f" VALUES ({', '.join('?' * (len(CONTRIBUTION_COLUMNS) + 4))})"
+)
+UPDATE_CONTRIBUTION: str = (
+    f"UPDATE contributions SET {', '.join(f'{column} = ?' for column in CONTRIBUTION_COLUMNS)},"
+    " last_change = ?, last_changed = ? WHERE item_key = ?"
+)
+
 SCHEMA: str = """
 CREATE TABLE IF NOT EXISTS opportunities (
     opportunity_id TEXT PRIMARY KEY,
@@ -68,6 +89,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action TEXT NOT NULL,
     detail TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS contributions (
+    item_key TEXT PRIMARY KEY,
+    repo TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL,
+    merged INTEGER NOT NULL,
+    comments INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    last_change TEXT NOT NULL,
+    last_changed TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS digests (
     digest_id INTEGER PRIMARY KEY AUTOINCREMENT,
     sent_at TEXT NOT NULL,
@@ -79,8 +115,9 @@ CREATE TABLE IF NOT EXISTS digests (
 
 class DeskStore:
     """
-    The desk's memory: tracked opportunities, the owner's record of outreach, an
-    append-only audit log of every decision the tools made, and the digest history.
+    The desk's memory: tracked opportunities, the owner's record of outreach, the state of
+    their own upstream pull requests and issues, an append-only audit log of every decision
+    the tools made, and the digest history.
 
     SQLite, one connection per call (see _session). Every method is blocking, so coded tools call
     them through asyncio.to_thread. SQLite serializes writers itself, which is enough
@@ -247,6 +284,56 @@ class DeskStore:
             ).fetchall()
         return [{"at": row["at"], "action": row["action"], "detail": json.loads(row["detail"])} for row in rows]
 
+    def sync_contributions(self, records: list[dict[str, Any]], now: str) -> list[dict[str, Any]]:
+        """
+        Store the owner's current upstream pull requests and issues, and say what changed since the last check.
+
+        :param records: Contribution records from BoardParser.parse_contributions.
+        :param now: ISO timestamp of this check.
+        :return: One {"item_key", "title", "change"} per record that is new, changed state,
+            was merged or gained comments. Unchanged records are not reported.
+        """
+        changes: list[dict[str, Any]] = []
+        with self._session() as connection:
+            for record in records:
+                key: str = str(record.get("item_key"))
+                row: sqlite3.Row | None = connection.execute(
+                    "SELECT state, merged, comments FROM contributions WHERE item_key = ?", (key,)
+                ).fetchone()
+                change: str = self._contribution_change(row, record)
+                values: tuple[Any, ...] = (
+                    str(record.get("repo")),
+                    int(record.get("number") or 0),
+                    str(record.get("kind")),
+                    str(record.get("title")),
+                    str(record.get("state")),
+                    int(bool(record.get("merged"))),
+                    int(record.get("comments") or 0),
+                    str(record.get("url")),
+                    str(record.get("opened_at")),
+                )
+                if row is None:
+                    connection.execute(INSERT_CONTRIBUTION, (*values, key, now, change, now))
+                elif change:
+                    connection.execute(UPDATE_CONTRIBUTION, (*values, change, now, key))
+                if change:
+                    changes.append({"item_key": key, "title": record.get("title"), "change": change})
+        return changes
+
+    def contributions(self, changed_since: str | None = None) -> list[dict[str, Any]]:
+        """
+        :param changed_since: Only records whose last change is at or after this ISO timestamp, when given.
+        :return: Tracked contributions, most recently changed first.
+        """
+        query: str = "SELECT * FROM contributions"
+        values: tuple[Any, ...] = ()
+        if changed_since:
+            query += " WHERE last_changed >= ?"
+            values = (changed_since,)
+        with self._session() as connection:
+            rows: list[sqlite3.Row] = connection.execute(f"{query} ORDER BY last_changed DESC", values).fetchall()
+        return [dict(row) | {"merged": bool(row["merged"])} for row in rows]
+
     def last_digest_at(self) -> str | None:
         """
         :return: When the last delivered digest went out, or None.
@@ -284,6 +371,25 @@ class DeskStore:
                 yield connection
         finally:
             connection.close()
+
+    @staticmethod
+    def _contribution_change(row: sqlite3.Row | None, record: dict[str, Any]) -> str:
+        """
+        :param row: The stored state of the contribution, or None when it is new.
+        :param record: Its state now.
+        :return: What changed, in words, or an empty string when nothing did.
+        """
+        if row is None:
+            return f"now tracked ({record.get('state')})"
+        changes: list[str] = []
+        if bool(record.get("merged")) and not row["merged"]:
+            changes.append("merged")
+        elif record.get("state") != row["state"]:
+            changes.append(f"{row['state']} -> {record.get('state')}")
+        comments: int = int(record.get("comments") or 0)
+        if comments > row["comments"]:
+            changes.append(f"{comments - row['comments']} new comment(s)")
+        return ", ".join(changes)
 
     @staticmethod
     def _opportunity(row: sqlite3.Row) -> dict[str, Any]:

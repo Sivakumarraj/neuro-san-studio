@@ -71,7 +71,7 @@ Branching from `upstream/main` keeps all of these out; the preflight gate checks
   #1138, #1145, #1179). Never resubmit it in any form.
 - A merged code fix weighs more than another documentation line, and the people who merge them
   are the lab's own engineers.
-- Open #1530 ("Feature/decision prescriptor", Jul 2026) submits a new network as code with an empty
-  "Fixes #" line and many merge commits from main: the pattern that gets closed. Finish its template
+- Open #1530 ("Feature/decision prescriptor", opened about Oct 24 2026) submits a new network as code
+  with an empty "Fixes #" line and many merge commits from main: the pattern that gets closed. Finish its template
   and link an issue a maintainer has answered, or close it and list the network under Community
   Projects from its own repository.

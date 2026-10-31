@@ -47,7 +47,7 @@ class TestDeskStore(TestCase):
             title=f"AI Engineer {number}",
             company="Acme",
             location="Bengaluru",
-            url=f"https://jobs.lever.co/acme/{number}",
+            url=f"https://jobs.example.com/acme/{number}",
             description="Python",
             posted_at="",
         )
@@ -113,7 +113,7 @@ class TestDeskStore(TestCase):
             "state": "open",
             "merged": False,
             "comments": 0,
-            "url": "https://github.com/o/r/pull/5",
+            "url": "https://github.example.com/o/r/pull/5",
             "opened_at": "2026-10-01T00:00:00Z",
         }
         first = self.store.sync_contributions([record], "2026-10-30T00:00:00+00:00")

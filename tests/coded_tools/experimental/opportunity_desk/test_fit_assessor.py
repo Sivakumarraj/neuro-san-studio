@@ -45,7 +45,7 @@ class TestFitAssessor(TestCase):
             title=title,
             company="Acme",
             location=location,
-            url="https://jobs.lever.co/acme/1",
+            url="https://jobs.example.com/acme/1",
             description=description,
             posted_at="",
         )
@@ -116,7 +116,7 @@ class TestFitAssessor(TestCase):
             title="Add retries to the web search tool",
             company="org/repo",
             location="open source",
-            url="https://github.com/org/repo/issues/7",
+            url="https://github.example.com/org/repo/issues/7",
             description="Python change in a coded tool; 5 years of history in this file.",
             posted_at=opened,
             claimed_by=claimed_by,

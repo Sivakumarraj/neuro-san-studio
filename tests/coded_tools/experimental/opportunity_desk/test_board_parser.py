@@ -18,7 +18,8 @@ from unittest import TestCase
 
 from coded_tools.experimental.opportunity_desk.board_parser import BoardParser
 
-# Trimmed from a real response of https://api.lever.co/v0/postings/leverdemo?mode=json (Oct 2026).
+# Trimmed from a real response of https://api.lever.co/v0/postings/leverdemo?mode=json (Oct 2026),
+# with the posting URL moved to an example host so the repository's link check never depends on it.
 # The "3+ years" requirement sits in "lists", not in the description.
 LEVER_RESPONSE: list = [
     {
@@ -33,7 +34,7 @@ LEVER_RESPONSE: list = [
         "lists": [{"text": "Skill Set:", "content": "<li>3+ years of customer relationship experience</li>"}],
         "text": "Customer Success Manager",
         "workplaceType": "hybrid",
-        "hostedUrl": "https://jobs.lever.co/leverdemo/ad208490-4052-4f91-a57e-433f2d1e484b",
+        "hostedUrl": "https://jobs.example.com/leverdemo/ad208490-4052-4f91-a57e-433f2d1e484b",
     }
 ]
 # Shape of https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true; content is entity-escaped HTML.
@@ -42,7 +43,7 @@ GREENHOUSE_RESPONSE: dict = {
         {
             "id": 4011,
             "title": "AI Engineer",
-            "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/4011",
+            "absolute_url": "https://boards.example.com/acme/jobs/4011",
             "location": {"name": "Bengaluru, India"},
             "updated_at": "2026-10-20T10:00:00-04:00",
             "first_published": "2026-10-18T09:00:00-04:00",
@@ -62,14 +63,14 @@ ASHBY_RESPONSE: dict = {
             "secondaryLocations": [{"location": "Hyderabad"}],
             "isRemote": True,
             "isListed": True,
-            "jobUrl": "https://jobs.ashbyhq.com/acme/b1",
+            "jobUrl": "https://jobs.example.com/acme/b1",
             "descriptionPlain": "LLM evaluation work.",
             "publishedAt": "2026-10-21T00:00:00.000+00:00",
         },
         {"id": "b2", "title": "Hidden", "isListed": False},
     ]
 }
-# Shape of https://api.github.com/search/issues: pull requests carry a "pull_request" object.
+# Shape of a GitHub issue-search response: pull requests carry a "pull_request" object.
 GITHUB_SEARCH: dict = {
     "total_count": 2,
     "items": [
@@ -90,7 +91,7 @@ GITHUB_SEARCH: dict = {
             "title": "Score networks over every repeat",
             "state": "open",
             "comments": 0,
-            "html_url": "https://github.com/cognizant-ai-lab/neuro-san-studio/issues/1550",
+            "html_url": "https://github.example.com/cognizant-ai-lab/neuro-san-studio/issues/1550",
             "repository_url": "https://api.github.com/repos/cognizant-ai-lab/neuro-san-studio",
             "created_at": "2026-10-31T09:00:00Z",
             "updated_at": "2026-10-31T09:00:00Z",
@@ -102,7 +103,7 @@ GITHUB_ISSUES: list = [
     {
         "number": 12,
         "title": "Add retries to the search tool",
-        "html_url": "https://github.com/org/repo/issues/12",
+        "html_url": "https://github.example.com/org/repo/issues/12",
         "labels": [{"name": "good first issue"}],
         "body": "Python change.",
         "created_at": "2026-10-01T00:00:00Z",
@@ -113,7 +114,7 @@ GITHUB_ISSUES: list = [
     {
         "number": 14,
         "title": "Taken already",
-        "html_url": "https://github.com/org/repo/issues/14",
+        "html_url": "https://github.example.com/org/repo/issues/14",
         "body": "Python change.",
         "created_at": "2026-10-02T00:00:00Z",
         "author_association": "NONE",
@@ -170,8 +171,8 @@ class TestBoardParser(TestCase):
     def test_unlabelled_repositories_read_every_open_issue(self):
         """Upstream labels nothing, so no labels must mean no label filter, not an empty one."""
         self.assertEqual(
-            BoardParser.issue_urls({"repo": "o/r", "labels": []}),
-            ["https://api.github.com/repos/o/r/issues?state=open&per_page=50"],
+            BoardParser.issue_urls({"repo": "cognizant-ai-lab/neuro-san-studio", "labels": []}),
+            ["https://api.github.com/repos/cognizant-ai-lab/neuro-san-studio/issues?state=open&per_page=50"],
         )
 
     def test_contributions_search_and_parse(self):

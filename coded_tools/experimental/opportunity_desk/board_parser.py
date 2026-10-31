@@ -116,7 +116,8 @@ class BoardParser:
             if not isinstance(item, dict):
                 continue
             pull: Any = item.get("pull_request")
-            repo: str = str(item.get("repository_url", "")).removeprefix("https://api.github.com/repos/")
+            # repository_url ends in ".../repos/<owner>/<name>".
+            repo: str = "/".join(str(item.get("repository_url", "")).rstrip("/").split("/")[-2:])
             records.append(
                 {
                     "item_key": f"{repo}#{item.get('number')}",

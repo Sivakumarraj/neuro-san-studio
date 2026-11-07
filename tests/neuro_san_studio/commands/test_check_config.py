@@ -60,16 +60,37 @@ class TestExpandFallbacks(TestCase):
         self.assertEqual(result[0], ("MusicNerd (fallback 0)", {"model_name": "gpt-5-mini"}))
         self.assertEqual(result[1], ("MusicNerd (fallback 1)", {"model_name": "claude-sonnet-4-6"}))
 
-    def test_fallbacks_with_primary_model_name_includes_primary(self):
-        """When the primary config also has a model_name it is prepended before the fallbacks."""
+    def test_fallbacks_with_model_name_next_to_list_tests_only_the_list(self):
+        """A model_name next to the fallbacks list is never used by neuro-san, so it is warned about, not tested."""
         config = {
             "model_name": "gpt-5-mini",
+            "temperature": 0.2,
             "fallbacks": [{"model_name": "claude-sonnet-4-6"}],
         }
-        result = _expand_fallbacks("MyAgent", config)
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0], ("MyAgent (primary)", {"model_name": "gpt-5-mini"}))
-        self.assertEqual(result[1], ("MyAgent (fallback 0)", {"model_name": "claude-sonnet-4-6"}))
+        with patch("builtins.print") as mock_print:
+            result = _expand_fallbacks("MyAgent", config)
+        self.assertEqual(result, [("MyAgent (fallback 0)", {"model_name": "claude-sonnet-4-6"})])
+        printed = " ".join(str(call.args[0]) for call in mock_print.call_args_list)
+        self.assertIn("WARNING: MyAgent: model_name, temperature next to 'fallbacks' is ignored", printed)
+
+    def test_fallbacks_alone_prints_no_warning(self):
+        """A config with only a fallbacks list, as the stock llm_config files have, prints no warning."""
+        config = {"fallbacks": [{"model_name": "gpt-5-mini"}]}
+        with patch("builtins.print") as mock_print:
+            _expand_fallbacks("MyAgent", config)
+        mock_print.assert_not_called()
+
+    def test_provider_tools_and_verbose_next_to_fallbacks_are_not_reported(self):
+        """provider_tools and verbose are still read next to the fallbacks list, so they are not warned about."""
+        config = {
+            "provider_tools": [{"type": "web_search"}],
+            "verbose": True,
+            "fallbacks": [{"model_name": "gpt-5-mini"}],
+        }
+        with patch("builtins.print") as mock_print:
+            result = _expand_fallbacks("MyAgent", config)
+        self.assertEqual(result, [("MyAgent (fallback 0)", {"model_name": "gpt-5-mini"})])
+        mock_print.assert_not_called()
 
     def test_single_fallback_entry(self):
         """A fallbacks list with one element produces exactly one result entry."""

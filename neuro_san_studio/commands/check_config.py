@@ -82,6 +82,11 @@ TEST_PROMPT = "Reply with exactly one word: hello"
 # "access_token" IS redacted (its parts include "token").
 _SENSITIVE_KEY_WORDS: frozenset = frozenset({"key", "token", "secret", "credential", "credentials", "password"})
 
+# The keys neuro-san still reads from an llm_config that has a "fallbacks" list. It builds the
+# agent's models from the list alone, so any other key next to the list is ignored at run time
+# (see cognizant-ai-lab/neuro-san#1552).
+_KEYS_USED_NEXT_TO_FALLBACKS: frozenset = frozenset({"fallbacks", "provider_tools", "verbose"})
+
 
 def _is_sensitive_key(key: str) -> bool:
     """Return True when *key* contains a sensitive word at a word boundary or as a substring."""
@@ -167,20 +172,22 @@ def _expand_fallbacks(label: str, llm_config: Dict[str, Any]) -> List[Tuple[str,
     (label, config) tuples so each model is tested separately.
 
     If there is no 'fallbacks' key the config is returned as-is.
-    If the primary config (outside of 'fallbacks') also carries a model_name
-    it is included as the first entry.
+    Otherwise only the list entries are returned, because neuro-san builds the models
+    from the list alone. A key next to the list, such as a model_name, is never used,
+    so it is reported as a warning instead of being tested.
     """
     fallbacks: Any = llm_config.get("fallbacks")
     if not isinstance(fallbacks, list) or not fallbacks:
         return [(label, llm_config)]
 
+    ignored_keys: List[str] = sorted(key for key in llm_config if key not in _KEYS_USED_NEXT_TO_FALLBACKS)
+    if ignored_keys:
+        print(
+            f"    WARNING: {label}: {', '.join(ignored_keys)} next to 'fallbacks' is ignored at run time. "
+            "Only the models in the 'fallbacks' list are used, so only those are tested."
+        )
+
     results: List[Tuple[str, Dict[str, Any]]] = []
-
-    # Primary config (everything except the fallbacks list itself)
-    primary_config: Dict[str, Any] = {k: v for k, v in llm_config.items() if k != "fallbacks"}
-    if primary_config.get("model_name"):
-        results.append((f"{label} (primary)", primary_config))
-
     for i, fallback_cfg in enumerate(fallbacks):
         results.append((f"{label} (fallback {i})", fallback_cfg))
 

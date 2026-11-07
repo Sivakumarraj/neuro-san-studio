@@ -34,6 +34,11 @@ Both formats produced by `neuro-san-studio` are accepted:
 individually. Duplicate configurations are deduplicated so each unique model is
 called only once.
 
+neuro-san builds an agent's models from the `fallbacks` list alone, so a key next
+to the list, such as a `model_name`, is ignored at run time. The command does not
+test such a key. It prints a warning that names it instead. `provider_tools` and
+`verbose` are still used next to the list and are not reported.
+
 ## Output
 
 The command prints, in order:

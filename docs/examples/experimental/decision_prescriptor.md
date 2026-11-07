@@ -5,8 +5,8 @@ what does each option cost us?"
 
 It is an agent-network implementation of **Evolutionary Surrogate-assisted Prescription (ESP)**
 ([Francon et al., 2020](https://doi.org/10.1145/3377930.3389842)): fit a predictor from historical
-data, evolve decision policies against that predictor, and return a set of strategies where no option
-beats every other on everything at once. The user picks from the set, because that choice encodes what
+data, evolve decision policies against that predictor, and return a set of strategies none of which
+can be improved on one outcome without giving up another. The user picks from the set, because that choice encodes what
 the objectives are worth to them — and nothing in the mathematics knows that.
 
 ---
@@ -92,7 +92,7 @@ If neither dominates the other, they are incomparable — and that incomparabili
 The **Pareto front** is the set nothing dominates.
 
 There is no "best" strategy on a front. Improving any objective requires giving up another. Which trade
-is acceptable is a judgement, not a calculation, and the network is instructed never to present one
+is acceptable is a judgment, not a calculation, and the network is instructed never to present one
 option as the answer.
 
 ### NSGA-II

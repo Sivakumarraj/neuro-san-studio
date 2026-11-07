@@ -109,7 +109,7 @@ class RenderParetoReport(CodedTool):
     @staticmethod
     def _balanced_index(front: np.ndarray) -> int:
         """
-        Pick the strategy closest to the centre of the front, in normalized units.
+        Pick the strategy closest to the center of the front, in normalized units.
 
         This is offered as a starting point for discussion, not a recommendation.
         Nothing in the mathematics prefers the middle of a front; only a human who

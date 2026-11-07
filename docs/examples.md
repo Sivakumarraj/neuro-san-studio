@@ -669,7 +669,7 @@ validations.
 [Decision Prescriptor](examples/experimental/decision_prescriptor.md) is a multi-agent decision optimizer
 implementing Evolutionary Surrogate-assisted Prescription. It fits a ridge-regression surrogate from historical
 records, evolves neural prescriptor policies against it with NSGA-II, and returns a Pareto front of strategies
-where no option beats every other on everything at once, rendered as a self-contained HTML report.
+that cannot be improved on one outcome without giving up another, rendered as a self-contained HTML report.
 
 **Tags:** `decision-optimization`, `pareto`, `evolutionary`, `tool`, `visualization`
 

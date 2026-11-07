@@ -174,12 +174,12 @@ dd { margin: 0; font-size: 1.375rem; font-variant-numeric: tabular-nums; letter-
 <style>{ParetoReport._theme_variables()}{ParetoReport.STYLE}</style></head>
 <body><div class="wrap">
 <h1>{html.escape(title)}</h1>
-<p class="sub">Each point is a distinct strategy that nothing else beats on every objective at once.
+<p class="sub">Each point is a distinct strategy that cannot be improved on one objective without giving up another.
 Moving along the front always means giving something up — that exchange is the decision.</p>
 <section><dl class="stats">{stat_tiles}</dl></section>
 <section><h2>Trade-off front</h2>
-<p class="note">Grey points were reached during the search but are beaten outright on every objective,
-so they are never worth choosing.</p>
+<p class="note">Gray points were reached during the search, but a strategy on the front is at least as good on
+every objective and better on at least one, so they are never worth choosing.</p>
 {legend}<div class="grid-2">{scatters}</div></section>
 <section><h2>Strategies across all objectives</h2>
 <p class="note">One line per strategy. A line that rises on one axis and falls on the next is making

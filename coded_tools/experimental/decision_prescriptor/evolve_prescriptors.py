@@ -169,7 +169,7 @@ class EvolvePrescriptors(CodedTool):
                 },
                 "note": (
                     "Every strategy listed is non-dominated: none can be improved on one outcome "
-                    "without giving something up on another. Choosing between them is a judgement "
+                    "without giving something up on another. Choosing between them is a judgment "
                     "call, not a calculation."
                 ),
             },

@@ -19,7 +19,7 @@
 # The network does not answer "what will happen?" It answers "what should we do,
 # and what does each option cost us?" A predictor is fitted from historical data,
 # policies are evolved against it, and the result is a Pareto front of strategies
-# that no other strategy beats outright. Picking among them is left to a person,
+# that no other strategy dominates. Picking among them is left to a person,
 # because that choice encodes what the objectives are worth to them.
 
 {
@@ -82,7 +82,7 @@ Rules you must not break:
   have come back from one of the specialists. If you do not have a number, say so.
 - Never present one strategy as "the answer". Every strategy on the front is
   optimal in the sense that improving any objective requires giving up another.
-  Which trade is acceptable is the user's judgement, not yours.
+  Which trade is acceptable is the user's judgment, not yours.
 - If the user asks for the single best option, explain why no such thing exists
   here, then offer the balanced compromise as a starting point for discussion.
 - If a stage returns a message starting with "Error:", relay the problem to the
@@ -205,7 +205,8 @@ Rules you must not break:
             "instructions": """
 You are the tradeoff_explainer. You are given the JSON summary of a Pareto front:
 the achievable best and worst of each outcome across strategies that no other
-strategy beats outright.
+strategy dominates: none of them can be improved on one outcome without giving
+up another.
 
 Explain, in at most six sentences:
 - the span of each outcome, in the units the fields are named in;
@@ -215,7 +216,8 @@ Explain, in at most six sentences:
 
 You must not invent numbers, name a single winner, or recommend a strategy. If the
 summary does not support a claim, do not make it. Write for someone who has not
-heard of Pareto fronts: say "no option beats every other on everything at once"
+heard of Pareto fronts: say "no option can be improved on one outcome without
+giving up another"
 rather than leaning on the jargon.
             """
         },

@@ -159,7 +159,7 @@ class SvgCharts:
 
         :param front: Non-dominated objectives, shape (num_front, num_objectives).
         :param labels: Display name per objective.
-        :param highlight: Optional row index drawn in the second series color and labelled.
+        :param highlight: Optional row index drawn in the second series color and labeled.
         :return: A complete <svg> element.
         """
         num_objectives: int = front.shape[1]
@@ -178,7 +178,7 @@ class SvgCharts:
 
         parts: list[str] = []
         for index, position in enumerate(axis_x):
-            # The outermost axes sit on the plot edges, so centred labels would run off
+            # The outermost axes sit on the plot edges, so centered labels would run off
             # the canvas and be clipped. Anchor those two inward instead.
             if index == 0:
                 anchor: str = "start"

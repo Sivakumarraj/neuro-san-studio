@@ -29,7 +29,7 @@ class Nsga2:
     "A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II".
 
     The search core is numpy only and free of any neuro-san import, so its
-    behaviour can be unit-tested on its own. Every objective is MINIMIZED.
+    behavior can be unit-tested on its own. Every objective is MINIMIZED.
     Ranking lives in ParetoRanking, breeding in GeneticOperators and the progress
     measure in Hypervolume.
     """

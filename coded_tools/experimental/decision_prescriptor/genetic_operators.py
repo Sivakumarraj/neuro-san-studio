@@ -73,7 +73,7 @@ class GeneticOperators:
         """
         Simulated binary crossover.
 
-        SBX mimics the behaviour of single-point crossover on binary strings while
+        SBX mimics the behavior of single-point crossover on binary strings while
         operating on real numbers: children land near their parents, and the spread
         parameter eta controls how near. Large eta keeps children tight to the
         parents, small eta explores further out.
@@ -120,7 +120,7 @@ class GeneticOperators:
         """
         Polynomial mutation.
 
-        Perturbs a gene by an amount drawn from a polynomial distribution centred on
+        Perturbs a gene by an amount drawn from a polynomial distribution centered on
         zero and scaled to the gene's own range, so a mutation is small far more
         often than it is large. The default per-gene rate of 1/num_genes means about
         one gene changes per individual.

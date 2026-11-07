@@ -52,7 +52,7 @@ class TestPrescriptorNetwork(TestCase):
             self.assertTrue(np.all(actions <= upper + 1e-12))
 
     def test_zero_weights_prescribe_the_middle_of_the_range(self):
-        """With every weight at zero the logistic output is 0.5, the centre of each bound."""
+        """With every weight at zero the logistic output is 0.5, the center of each bound."""
         actions = self.network.actions(np.zeros(27), np.ones((2, 2)))
         np.testing.assert_allclose(actions, [[0.5, 2.5, 0.25], [0.5, 2.5, 0.25]])
 

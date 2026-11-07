@@ -268,10 +268,11 @@ one class per file:
 
 | File | Role |
 |---|---|
-| `load_decision_problem.py`, `fit_surrogate.py`, `evolve_prescriptors.py`, `render_pareto_report.py` | The four coded tools |
+| `load_decision_problem.py`, `fit_surrogate.py` | The coded tools for stages 1 and 2 |
+| `evolve_prescriptors.py`, `render_pareto_report.py` | The coded tools for stages 3 and 4 |
 | `decision_keys.py` | The `sly_data` keys the tools share |
 | `ridge_surrogate.py`, `training_arrays.py` | The predictor and the records it is fitted from |
-| `prescriptor_network.py`, `standardizer.py`, `prescriptor_evaluator.py` | The evolved policy and its objective function |
+| `prescriptor_network.py`, `standardizer.py`, `prescriptor_evaluator.py` | The evolved policy and its objective |
 | `nsga2.py`, `pareto_ranking.py`, `genetic_operators.py`, `hypervolume.py` | The search |
 | `svg_charts.py`, `linear_scale.py`, `pareto_report.py` | The HTML report |
 | `sample_data.py` | The synthetic example |

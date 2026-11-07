@@ -59,8 +59,8 @@ class FitSurrogate(CodedTool):
             alpha: float = float(args.get("alpha", 1.0))
         except (TypeError, ValueError):
             return self._error("'alpha' must be a number.")
-        if alpha < 0:
-            return self._error("'alpha' must be non-negative.")
+        if not np.isfinite(alpha) or alpha < 0:
+            return self._error("'alpha' must be a finite, non-negative number.")
 
         arrays: dict[str, np.ndarray] = TrainingArrays.build(
             rows, spec.get("context_fields"), spec.get("action_fields"), spec.get("outcome_fields")
@@ -71,12 +71,16 @@ class FitSurrogate(CodedTool):
         scores: np.ndarray = surrogate.r_squared(features, arrays.get("outcome"))
 
         sly_data[DecisionKeys.SURROGATE] = surrogate
+        # A front evolved against the previous fit no longer matches this one.
+        sly_data.pop(DecisionKeys.RESULT, None)
 
         reported: str = ", ".join(f"{name} R²={score:.3f}" for name, score in zip(spec.get("outcome_fields"), scores))
         weakest: float = float(np.min(scores))
+        # A score that is not a finite number is never evidence of a strong fit.
+        weak: bool = not bool(np.all(np.isfinite(scores))) or weakest < self.WEAK_FIT
         caveat: str = (
             " Fit is weak, so treat the front as indicative only."
-            if weakest < self.WEAK_FIT
+            if weak
             else " Fit is strong enough to search against."
         )
         logger.info("Fitted surrogate on %d records, weakest R-squared %.3f", len(rows), weakest)

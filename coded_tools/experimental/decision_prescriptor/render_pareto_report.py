@@ -17,6 +17,7 @@
 import asyncio
 import logging
 import os
+import uuid
 from typing import Any
 
 import numpy as np
@@ -36,12 +37,17 @@ class RenderParetoReport(CodedTool):
 
     DEFAULT_OUTPUT_PATH: str = "decision_prescriptor_report.html"
 
+    # Every report goes into this folder of the server's working directory, so an LLM-chosen
+    # name can never overwrite anything else there, such as a UI template.
+    REPORT_DIRECTORY: str = "decision_prescriptor_reports"
+
     def invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
         """
         Render the charts and return the path to the file written.
 
-        The path comes from an LLM, so it is only honored inside the server's working
-        directory and only for an .html file.
+        The name comes from an LLM, so only its file name is used, it must end in .html,
+        and the report is always a new file in REPORT_DIRECTORY. A short random suffix
+        keeps two sessions from writing, or handing out, the same file.
 
         :param args: May contain "title" and "output_path".
         :param sly_data: Must hold the spec and the evolved result.
@@ -53,12 +59,12 @@ class RenderParetoReport(CodedTool):
             return self._error("nothing to render yet. Evolve the prescriptors first.")
 
         title: str = str(args.get("title") or "Decision trade-off front")
-        output_path: str = os.path.realpath(str(args.get("output_path") or self.DEFAULT_OUTPUT_PATH))
-        working_directory: str = os.path.realpath(os.getcwd())
-        if os.path.commonpath([output_path, working_directory]) != working_directory:
-            return self._error("the report can only be written inside the working directory.")
-        if not output_path.endswith(".html"):
-            return self._error("the report path must end in .html.")
+        # Any folders in the requested path are dropped; the file name alone is kept.
+        file_name: str = os.path.basename(str(args.get("output_path") or self.DEFAULT_OUTPUT_PATH))
+        if not file_name.endswith(".html") or file_name == ".html":
+            return self._error("the report file name must end in .html.")
+        report_directory: str = os.path.join(os.path.realpath(os.getcwd()), self.REPORT_DIRECTORY)
+        output_path: str = os.path.join(report_directory, f"{file_name[: -len('.html')]}-{uuid.uuid4().hex[:8]}.html")
 
         front: np.ndarray = result.get("front")
         balanced: int = self._balanced_index(front)
@@ -83,8 +89,9 @@ class RenderParetoReport(CodedTool):
         )
 
         try:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as handle:
+            os.makedirs(report_directory, exist_ok=True)
+            # "x" creates the file and fails rather than replace one that already exists.
+            with open(output_path, "x", encoding="utf-8") as handle:
                 handle.write(document)
         except OSError as error:
             logger.error("Could not write the trade-off report to %s: %s", output_path, error)

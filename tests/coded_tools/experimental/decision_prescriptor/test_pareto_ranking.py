@@ -86,7 +86,7 @@ class TestParetoRanking(TestCase):
 
     def test_evenly_spaced_interior_points_score_equally(self):
         """
-        On a uniform front every interior point has the same neighbour gap.
+        On a uniform front every interior point has the same neighbor gap.
 
         With two objectives each interior point spans 2 of 4 steps on each axis,
         giving 0.5 per objective and 1.0 in total.
@@ -139,3 +139,20 @@ class TestParetoRanking(TestCase):
         """Asking for more points than exist returns them all."""
         objectives = np.array([[0.0, 1.0], [1.0, 0.0]])
         np.testing.assert_array_equal(ParetoRanking.select_spread(objectives, 10), np.array([0, 1]))
+
+    def test_fronts_match_peeling_the_non_dominated_set(self) -> None:
+        """
+        On random data, each front is what remains non-dominated once every earlier
+        front is removed, with indices in ascending order.
+        """
+        rng = np.random.default_rng(7)
+        objectives = np.round(rng.uniform(size=(120, 3)), 1)
+
+        expected: list = []
+        remaining = np.arange(objectives.shape[0])
+        while remaining.size:
+            mask = ParetoRanking.non_dominated_mask(objectives[remaining])
+            expected.append([int(index) for index in remaining[mask]])
+            remaining = remaining[~mask]
+
+        self.assertEqual(ParetoRanking.fast_non_dominated_sort(objectives), expected)

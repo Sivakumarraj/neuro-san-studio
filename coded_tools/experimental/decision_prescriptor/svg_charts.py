@@ -135,11 +135,13 @@ class SvgCharts:
             )
             parts.append(f'<polyline points="{trace}" class="front-line"/>')
 
-        for position, index in enumerate(order):
+        # Points are drawn in x order but named by their row, the strategy number the table
+        # and the parallel coordinates use, so one number always means one strategy.
+        for index in order:
             row: np.ndarray = front[index]
             parts.append(
                 f'<circle cx="{x_scale.place(row[x_index]):.1f}" cy="{y_scale.place(row[y_index]):.1f}" r="5" '
-                f'class="front"><title>strategy {position + 1} — {x_label} '
+                f'class="front"><title>strategy {index + 1} — {x_label} '
                 f"{SvgCharts.format_number(row[x_index])}, {y_label} "
                 f"{SvgCharts.format_number(row[y_index])}</title></circle>"
             )

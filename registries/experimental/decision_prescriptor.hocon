@@ -236,7 +236,7 @@ rather than leaning on the jargon.
                         },
                         "output_path": {
                             "type": "string",
-                            "description": "Where to write the HTML file, inside the working directory and ending in .html. Defaults to decision_prescriptor_report.html in the working directory.",
+                            "description": "A file name for the report, ending in .html. The report is always written as a new file in the decision_prescriptor_reports folder of the working directory, with a short suffix added, and any folders in the name are ignored. Defaults to decision_prescriptor_report.html.",
                             "default": "decision_prescriptor_report.html"
                         }
                     },

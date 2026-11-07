@@ -49,8 +49,15 @@ class LoadDecisionProblem(CodedTool):
         :return: A short human-readable confirmation, or a message starting with "Error:".
         """
         rows: list[dict[str, Any]] | None = args.get("rows")
+        field_names: tuple[str, ...] = ("context_fields", "action_fields", "outcome_fields")
 
         if not rows:
+            if any(args.get(name) for name in field_names):
+                # Fields were named for the user's own data, so the example would be the wrong data.
+                return self._error(
+                    "field names were given but no rows. Send the records too, or nothing at all to "
+                    "load the built-in example."
+                )
             rows = SampleData.generate()
             spec: dict[str, Any] = SampleData.specification()
         else:
@@ -60,9 +67,7 @@ class LoadDecisionProblem(CodedTool):
                 "outcome_fields": args.get("outcome_fields") or [],
                 "maximize": args.get("maximize") or [],
             }
-            missing: list[str] = [
-                name for name in ("context_fields", "action_fields", "outcome_fields") if not spec.get(name)
-            ]
+            missing: list[str] = [name for name in field_names if not spec.get(name)]
             if missing:
                 return self._error(f"must name {', '.join(missing)} when supplying your own rows.")
             if len(spec.get("maximize")) != len(spec.get("outcome_fields")):
@@ -70,6 +75,10 @@ class LoadDecisionProblem(CodedTool):
                     f"'maximize' has {len(spec.get('maximize'))} entries but there are "
                     f"{len(spec.get('outcome_fields'))} outcome fields; one direction is needed per outcome."
                 )
+
+            if not all(isinstance(flag, bool) for flag in spec.get("maximize")):
+                # A string such as "false" would read as true and flip the objective.
+                return self._error("'maximize' must hold true or false for each outcome field.")
 
         try:
             TrainingArrays.build(
@@ -80,6 +89,9 @@ class LoadDecisionProblem(CodedTool):
 
         sly_data[DecisionKeys.DATASET] = rows
         sly_data[DecisionKeys.SPEC] = spec
+        # A model or front from an earlier problem does not describe this one.
+        sly_data.pop(DecisionKeys.SURROGATE, None)
+        sly_data.pop(DecisionKeys.RESULT, None)
 
         directions: str = ", ".join(
             f"{name} ({'maximize' if flag else 'minimize'})"

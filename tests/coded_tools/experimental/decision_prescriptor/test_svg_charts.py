@@ -16,6 +16,8 @@
 
 from unittest import TestCase
 
+import numpy as np
+
 from coded_tools.experimental.decision_prescriptor.svg_charts import SvgCharts
 
 
@@ -43,3 +45,14 @@ class TestSvgCharts(TestCase):
     def test_empty_convergence_history_renders_an_empty_chart(self):
         """A run with no generations must not break the report."""
         self.assertTrue(SvgCharts.convergence([]).startswith("<svg"))
+
+    def test_scatter_tooltips_number_strategies_by_row(self) -> None:
+        """
+        Points are drawn in x order, but each tooltip names the strategy by its row,
+        the number the table and the report text use.
+        """
+        front = np.array([[3.0, 1.0], [1.0, 3.0], [2.0, 2.0]])
+        svg = SvgCharts.pareto_scatter(front, np.empty((0, 2)), 0, 1, ["x", "y"])
+        self.assertIn("strategy 1 — x 3", svg)
+        self.assertIn("strategy 2 — x 1", svg)
+        self.assertIn("strategy 3 — x 2", svg)

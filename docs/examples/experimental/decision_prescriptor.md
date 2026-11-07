@@ -102,7 +102,7 @@ in numpy rather than pulled from a library, so the mechanism is inspectable:
 
 * **Fast non-dominated sort** — peel the population into layers. Count how many solutions dominate each
   one, take the zero-count layer as front 0, then decrement and repeat.
-* **Crowding distance** — within a front, score each solution by the gap between its neighbours,
+* **Crowding distance** — within a front, score each solution by the gap between its neighbors,
   summed across objectives. Extremes score infinity so the honest edges of what is achievable are never
   discarded. This is the diversity pressure that stops the front collapsing onto one corner.
 * **Crowded-comparison tournament** — lower front wins; on a tie, the less crowded wins. Selection

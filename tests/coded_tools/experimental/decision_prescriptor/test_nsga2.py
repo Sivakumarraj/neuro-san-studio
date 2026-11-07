@@ -143,3 +143,28 @@ class TestNsga2(TestCase):
         first = Nsga2.evolve(Zdt1Benchmark.evaluate, *bounds, population_size=20, generations=10, seed=42)
         second = Nsga2.evolve(Zdt1Benchmark.evaluate, *bounds, population_size=20, generations=10, seed=42)
         np.testing.assert_allclose(first.get("front_objectives"), second.get("front_objectives"))
+
+    def test_archive_keeps_every_non_dominated_solution_evaluated(self) -> None:
+        """
+        With a population far smaller than the front, crowding truncation drops
+        non-dominated children every generation. The archive must still hold every
+        non-dominated solution the search evaluated, not just the survivors.
+        """
+        evaluated: list = []
+
+        def recording_zdt1(genes: np.ndarray) -> np.ndarray:
+            # A closure so the test can see every batch evolve() evaluates.
+            objectives = Zdt1Benchmark.evaluate(genes)
+            evaluated.append(objectives)
+            return objectives
+
+        lower = np.zeros(4)
+        upper = np.ones(4)
+        result = Nsga2.evolve(recording_zdt1, lower, upper, population_size=8, generations=15, seed=3)
+
+        everything = np.vstack(evaluated)
+        expected = everything[ParetoRanking.non_dominated_mask(everything)]
+        expected = np.unique(np.round(expected, 9), axis=0)
+        archived = np.unique(np.round(result.get("front_objectives"), 9), axis=0)
+        self.assertGreater(len(archived), 8)
+        np.testing.assert_array_equal(archived, expected)

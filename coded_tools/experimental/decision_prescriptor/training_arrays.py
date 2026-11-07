@@ -40,7 +40,7 @@ class TrainingArrays:
         :param outcome_names: Fields describing what happened, to be predicted.
         :return: Dict with the "context", "action" and "outcome" arrays.
         :raises ValueError: If no rows are given, a named field is missing from a row,
-            or a value is not a number.
+            or a value is not a finite number.
         """
         if not rows:
             raise ValueError("no rows supplied")
@@ -59,7 +59,7 @@ class TrainingArrays:
         :param rows: Historical records.
         :param names: Fields to gather, in column order.
         :return: Array of shape (num_rows, len(names)).
-        :raises ValueError: Naming the row and field when a field is missing or not a number.
+        :raises ValueError: Naming the row when a field is missing or a value is not a finite number.
         """
         table: list[list[float]] = []
         for index, row in enumerate(rows):
@@ -70,4 +70,6 @@ class TrainingArrays:
                 table.append([float(row.get(name)) for name in names])
             except (TypeError, ValueError) as error:
                 raise ValueError(f"row {index} has a non-numeric value: {error}") from error
+            if not all(np.isfinite(value) for value in table[-1]):
+                raise ValueError(f"row {index} has a value that is not a finite number, such as nan or inf")
         return np.array(table, dtype=float)

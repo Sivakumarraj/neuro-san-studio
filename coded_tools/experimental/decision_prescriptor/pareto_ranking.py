@@ -105,43 +105,35 @@ class ParetoRanking:
         Partition a population into Pareto fronts.
 
         Front 0 holds the solutions nothing dominates. Front 1 holds those dominated
-        only by front 0, and so on. This is Deb's O(M*N^2) formulation: for each
-        solution count how many dominate it, then peel off the zero-count layer and
-        decrement the counts of everything it dominated.
+        only by front 0, and so on. This is Deb's O(M*N^2) formulation: count how many
+        solutions dominate each one, then peel off the zero-count layer and take its
+        dominations off the counts. The domination matrix is built with one array
+        broadcast rather than a Python double loop, which kept a 500 x 500 search
+        running for tens of minutes.
 
         :param objectives: Array of shape (population_size, num_objectives), minimized.
-        :return: List of fronts, each a list of row indices into objectives, best front first.
+        :return: List of fronts, each a list of row indices into objectives in ascending
+            order, best front first.
         """
         population_size: int = objectives.shape[0]
         if population_size == 0:
             return []
 
-        # dominated_by[i] lists the solutions that i dominates.
-        dominated_by: list[list[int]] = [[] for _ in range(population_size)]
-        # domination_count[i] is how many solutions dominate i.
-        domination_count: np.ndarray = np.zeros(population_size, dtype=int)
+        # dominates[i, j] : solution i dominates solution j.
+        no_worse: np.ndarray = np.all(objectives[:, None, :] <= objectives[None, :, :], axis=2)
+        strictly_better: np.ndarray = np.any(objectives[:, None, :] < objectives[None, :, :], axis=2)
+        dominates: np.ndarray = no_worse & strictly_better
 
-        for i in range(population_size):
-            for j in range(i + 1, population_size):
-                if ParetoRanking.dominates(objectives[i], objectives[j]):
-                    dominated_by[i].append(j)
-                    domination_count[j] += 1
-                elif ParetoRanking.dominates(objectives[j], objectives[i]):
-                    dominated_by[j].append(i)
-                    domination_count[i] += 1
-
+        # domination_count[j] is how many solutions not yet placed in a front dominate j.
+        domination_count: np.ndarray = dominates.sum(axis=0)
+        placed: np.ndarray = np.zeros(population_size, dtype=bool)
         fronts: list[list[int]] = []
-        current_front: list[int] = [i for i in range(population_size) if domination_count[i] == 0]
-
-        while current_front:
-            fronts.append(current_front)
-            next_front: list[int] = []
-            for i in current_front:
-                for j in dominated_by[i]:
-                    domination_count[j] -= 1
-                    if domination_count[j] == 0:
-                        next_front.append(j)
-            current_front = sorted(next_front)
+        current_front: np.ndarray = np.flatnonzero(domination_count == 0)
+        while current_front.size > 0:
+            fronts.append([int(index) for index in current_front])
+            placed[current_front] = True
+            domination_count = domination_count - dominates[current_front].sum(axis=0)
+            current_front = np.flatnonzero((domination_count == 0) & ~placed)
 
         return fronts
 
@@ -151,7 +143,7 @@ class ParetoRanking:
         Measure how isolated each solution is within its own front.
 
         For every objective the front is sorted and each solution receives the
-        normalized gap between its two neighbours. The two extremes get infinity so
+        normalized gap between its two neighbors. The two extremes get infinity so
         elitist selection never discards the ends of the front. Summing across
         objectives gives a diversity score used as the tie-break inside a front:
         crowded regions lose, sparse regions survive, and the front stays spread out.
@@ -180,8 +172,8 @@ class ParetoRanking:
             distances[order[0]] = np.inf
             distances[order[-1]] = np.inf
             for position in range(1, front_size - 1):
-                neighbour_gap: float = values[order[position + 1]] - values[order[position - 1]]
-                distances[order[position]] += neighbour_gap / spread
+                neighbor_gap: float = values[order[position + 1]] - values[order[position - 1]]
+                distances[order[position]] += neighbor_gap / spread
 
         return distances
 

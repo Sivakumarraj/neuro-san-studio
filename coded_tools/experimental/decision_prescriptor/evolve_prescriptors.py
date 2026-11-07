@@ -78,8 +78,10 @@ class EvolvePrescriptors(CodedTool):
             seed: int = int(args.get("seed", 0))
         except (TypeError, ValueError):
             return self._error("population_size, generations, hidden_dim and seed must all be whole numbers.")
-        if min(population_size, generations, hidden_dim) < 1:
-            return self._error("population_size, generations and hidden_dim must all be at least 1.")
+        if min(population_size, generations, hidden_dim) < 1 or seed < 0:
+            return self._error(
+                "population_size, generations and hidden_dim must all be at least 1, and seed at least 0."
+            )
         if (
             population_size > self.MAX_POPULATION
             or generations > self.MAX_GENERATIONS

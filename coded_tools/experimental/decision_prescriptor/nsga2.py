@@ -130,17 +130,21 @@ class Nsga2:
 
             # Elitist: parents and children compete for the next generation together,
             # so a good solution can never be lost to chance.
+            children_objectives: np.ndarray = evaluate(children)
             combined: np.ndarray = np.vstack([population, children])
-            combined_objectives: np.ndarray = np.vstack([objectives, evaluate(children)])
+            combined_objectives: np.ndarray = np.vstack([objectives, children_objectives])
+
+            # Archive every child before selection. Once the first front outgrows the
+            # population, crowding truncation drops non-dominated children, and the archive
+            # exists to keep them. The parents are already archived, or were dominated.
+            archive_genes, archive_objectives = Nsga2.update_archive(
+                archive_genes, archive_objectives, children, children_objectives
+            )
+            archive_history.append(archive_objectives)
 
             keep: np.ndarray = ParetoRanking.environmental_selection(combined_objectives, population_size)
             population = combined[keep]
             objectives = combined_objectives[keep]
-
-            archive_genes, archive_objectives = Nsga2.update_archive(
-                archive_genes, archive_objectives, population, objectives
-            )
-            archive_history.append(archive_objectives)
 
         return {
             "front_genes": archive_genes,

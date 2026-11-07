@@ -56,9 +56,12 @@ class TestDecisionPipeline(TestCase):
         self.assertGreater(evolved.get("strategies_found"), 0)
         self.assertIn("margin_pct", evolved.get("achievable_range"))
 
-        message = RenderParetoReport().invoke({"output_path": "reports/report.html"}, sly_data)
+        message = RenderParetoReport().invoke({"output_path": "report.html"}, sly_data)
         self.assertIn("Wrote the trade-off report", message)
-        with open(os.path.join("reports", "report.html"), encoding="utf-8") as handle:
+        written = os.listdir(RenderParetoReport.REPORT_DIRECTORY)
+        self.assertEqual(len(written), 1)
+        self.assertTrue(written[0].startswith("report-") and written[0].endswith(".html"), written[0])
+        with open(os.path.join(RenderParetoReport.REPORT_DIRECTORY, written[0]), encoding="utf-8") as handle:
             self.assertIn("<svg", handle.read())
 
     def test_stages_refuse_to_run_out_of_order(self):
@@ -117,14 +120,108 @@ class TestDecisionPipeline(TestCase):
         FitSurrogate().invoke({}, sly_data)
         self.assertTrue(EvolvePrescriptors().invoke({"generations": 100000}, sly_data).startswith("Error:"))
 
-    def test_report_outside_the_working_directory_is_refused(self):
-        """The path comes from an LLM, so it must not be able to write anywhere on disk."""
+    def _evolved_sly_data(self) -> dict:
+        """
+        Run the first three stages on the built-in example with a short search.
+
+        :return: sly_data ready for the report stage.
+        """
         sly_data = {}
         LoadDecisionProblem().invoke({}, sly_data)
         FitSurrogate().invoke({}, sly_data)
         EvolvePrescriptors().invoke({"generations": 2}, sly_data)
+        return sly_data
+
+    def test_report_name_is_confined_to_its_folder(self) -> None:
+        """The name comes from an LLM, so its folders are dropped and nothing outside the report folder is written."""
+        sly_data = self._evolved_sly_data()
 
         outside = os.path.join(os.path.dirname(os.getcwd()), "escaped.html")
-        self.assertTrue(RenderParetoReport().invoke({"output_path": outside}, sly_data).startswith("Error:"))
+        template = os.path.join("apps", "ui", "index.html")
+        self.assertIn("Wrote the trade-off report", RenderParetoReport().invoke({"output_path": outside}, sly_data))
+        self.assertIn("Wrote the trade-off report", RenderParetoReport().invoke({"output_path": template}, sly_data))
         self.assertTrue(RenderParetoReport().invoke({"output_path": "report.txt"}, sly_data).startswith("Error:"))
         self.assertFalse(os.path.exists(outside))
+        self.assertFalse(os.path.exists(template))
+        self.assertEqual(sorted(os.listdir(".")), [RenderParetoReport.REPORT_DIRECTORY])
+
+    def test_each_report_is_a_new_file(self) -> None:
+        """Two renders with the same name write two files, so two sessions never share or overwrite one."""
+        sly_data = self._evolved_sly_data()
+        RenderParetoReport().invoke({}, sly_data)
+        RenderParetoReport().invoke({}, sly_data)
+        self.assertEqual(len(os.listdir(RenderParetoReport.REPORT_DIRECTORY)), 2)
+
+    def test_non_finite_alpha_is_rejected(self) -> None:
+        """A NaN alpha would fit a NaN model, and the fit would still be called strong."""
+        sly_data = {}
+        LoadDecisionProblem().invoke({}, sly_data)
+        for alpha in ("nan", "inf"):
+            with self.subTest(alpha=alpha):
+                self.assertTrue(FitSurrogate().invoke({"alpha": alpha}, sly_data).startswith("Error:"))
+
+    def test_non_finite_values_in_rows_are_rejected(self) -> None:
+        """A nan or inf value would poison the fit, so the load names the row instead."""
+        rows = [{"a": float(i), "b": 1.0, "c": 2.0} for i in range(4)]
+        rows[2]["c"] = "nan"
+        message = LoadDecisionProblem().invoke(
+            {
+                "rows": rows,
+                "context_fields": ["a"],
+                "action_fields": ["b"],
+                "outcome_fields": ["c"],
+                "maximize": [True],
+            },
+            {},
+        )
+        self.assertTrue(message.startswith("Error:"), message)
+        self.assertIn("row 2", message)
+
+    def test_loading_a_new_problem_drops_the_old_model_and_front(self) -> None:
+        """A model or front from the earlier problem must not be used for the new one."""
+        sly_data = self._evolved_sly_data()
+        rows = [{"a": float(i), "b": float(i % 3), "c": float(2 * i)} for i in range(10)]
+        LoadDecisionProblem().invoke(
+            {
+                "rows": rows,
+                "context_fields": ["a"],
+                "action_fields": ["b"],
+                "outcome_fields": ["c"],
+                "maximize": [True],
+            },
+            sly_data,
+        )
+        self.assertTrue(EvolvePrescriptors().invoke({}, sly_data).startswith("Error:"))
+        self.assertTrue(RenderParetoReport().invoke({}, sly_data).startswith("Error:"))
+
+    def test_refitting_drops_the_old_front(self) -> None:
+        """A front evolved against the previous fit must be evolved again before it is drawn."""
+        sly_data = self._evolved_sly_data()
+        FitSurrogate().invoke({"alpha": 0.1}, sly_data)
+        self.assertTrue(RenderParetoReport().invoke({}, sly_data).startswith("Error:"))
+
+    def test_negative_seed_is_rejected(self) -> None:
+        """A negative seed would raise inside numpy instead of coming back as an error message."""
+        sly_data = {}
+        LoadDecisionProblem().invoke({}, sly_data)
+        FitSurrogate().invoke({}, sly_data)
+        self.assertTrue(EvolvePrescriptors().invoke({"seed": -1}, sly_data).startswith("Error:"))
+
+    def test_field_names_without_rows_are_rejected(self) -> None:
+        """Named fields with no rows mean the user's data went missing, so the example must not stand in."""
+        message = LoadDecisionProblem().invoke({"rows": [], "outcome_fields": ["revenue"]}, {})
+        self.assertTrue(message.startswith("Error:"), message)
+
+    def test_maximize_must_hold_booleans(self) -> None:
+        """The string "false" is truthy and would flip the objective, so it is refused."""
+        message = LoadDecisionProblem().invoke(
+            {
+                "rows": [{"a": 1.0, "b": 2.0, "c": 3.0}],
+                "context_fields": ["a"],
+                "action_fields": ["b"],
+                "outcome_fields": ["c"],
+                "maximize": ["false"],
+            },
+            {},
+        )
+        self.assertTrue(message.startswith("Error:"), message)

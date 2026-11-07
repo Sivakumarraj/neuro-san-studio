@@ -41,9 +41,9 @@
                 # Text block says how we are going to examine the text of the response.
                 "text": {
 
-                    # The report tool always writes this default file name, and the front man
+                    # Every report file name starts with this default name, and the front man
                     # is instructed to give the user the path.
-                    "keywords": ["decision_prescriptor_report.html"],
+                    "keywords": ["decision_prescriptor_report"],
 
                     # The gist checks the behavior the instructions insist on: the data is called
                     # synthetic, and no single strategy is presented as the answer.

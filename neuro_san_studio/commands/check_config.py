@@ -173,25 +173,45 @@ def _expand_fallbacks(label: str, llm_config: Dict[str, Any]) -> List[Tuple[str,
 
     If there is no 'fallbacks' key the config is returned as-is.
     Otherwise only the list entries are returned, because neuro-san builds the models
-    from the list alone. A key next to the list, such as a model_name, is never used,
-    so it is reported as a warning instead of being tested.
+    from the list alone. A key next to the list, such as a model_name, is never used;
+    _ignored_fallback_keys() finds those so the caller can warn about them instead.
     """
     fallbacks: Any = llm_config.get("fallbacks")
     if not isinstance(fallbacks, list) or not fallbacks:
         return [(label, llm_config)]
-
-    ignored_keys: List[str] = sorted(key for key in llm_config if key not in _KEYS_USED_NEXT_TO_FALLBACKS)
-    if ignored_keys:
-        print(
-            f"    WARNING: {label}: {', '.join(ignored_keys)} next to 'fallbacks' is ignored at run time. "
-            "Only the models in the 'fallbacks' list are used, so only those are tested."
-        )
 
     results: List[Tuple[str, Dict[str, Any]]] = []
     for i, fallback_cfg in enumerate(fallbacks):
         results.append((f"{label} (fallback {i})", fallback_cfg))
 
     return results
+
+
+def _ignored_fallback_keys(llm_config: Dict[str, Any]) -> Tuple[str, ...]:
+    """
+    Find the keys next to a non-empty 'fallbacks' list that neuro-san ignores at run time.
+
+    :param llm_config: The llm_config to inspect
+    :return: The ignored keys, sorted; empty when there is no such list or nothing is ignored
+    """
+    fallbacks: Any = llm_config.get("fallbacks")
+    if not isinstance(fallbacks, list) or not fallbacks:
+        return ()
+    return tuple(sorted(key for key in llm_config if key not in _KEYS_USED_NEXT_TO_FALLBACKS))
+
+
+def _print_ignored_fallback_keys(labels_by_keys: Dict[Tuple[str, ...], List[str]]) -> None:
+    """
+    Print one warning per set of ignored keys, naming every config label it applies to, so that
+    a key every agent inherits from the top-level llm_config is reported once, not once per agent.
+
+    :param labels_by_keys: The labels of the configs that ignore each set of keys
+    """
+    for ignored_keys, labels in labels_by_keys.items():
+        print(
+            f"    WARNING: {', '.join(ignored_keys)} next to 'fallbacks' is ignored at run time "
+            f"for {', '.join(labels)}. Only the models in the 'fallbacks' list are used, so only those are tested."
+        )
 
 
 def extract_llm_configs_from_agent_network(
@@ -211,6 +231,7 @@ def extract_llm_configs_from_agent_network(
 
     overlayer = DictionaryOverlay()
     results: List[Tuple[str, Dict[str, Any]]] = []
+    labels_by_ignored_keys: Dict[Tuple[str, ...], List[str]] = {}
 
     for tool_spec in tools:
         # Get agent name the same way AgentNetwork does
@@ -226,7 +247,11 @@ def extract_llm_configs_from_agent_network(
         merged_llm_config: Dict[str, Any] = overlayer.overlay(top_level_llm_config, agent_llm_config)
 
         results.extend(_expand_fallbacks(agent_name, merged_llm_config))
+        ignored_keys: Tuple[str, ...] = _ignored_fallback_keys(merged_llm_config)
+        if ignored_keys:
+            labels_by_ignored_keys.setdefault(ignored_keys, []).append(agent_name)
 
+    _print_ignored_fallback_keys(labels_by_ignored_keys)
     return results
 
 
@@ -243,6 +268,9 @@ def extract_llm_configs_from_studio_config(
     llm_config: Dict[str, Any] = config.get("llm_config")
     if not llm_config:
         return []
+    ignored_keys: Tuple[str, ...] = _ignored_fallback_keys(llm_config)
+    if ignored_keys:
+        _print_ignored_fallback_keys({ignored_keys: [hocon_path]})
     return _expand_fallbacks(hocon_path, llm_config)
 
 

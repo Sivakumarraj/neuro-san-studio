@@ -24,6 +24,7 @@ from unittest.mock import patch
 
 from neuro_san_studio.commands.check_config import CheckConfigCommand
 from neuro_san_studio.commands.check_config import _expand_fallbacks
+from neuro_san_studio.commands.check_config import _ignored_fallback_keys
 from neuro_san_studio.commands.check_config import extract_llm_configs_from_agent_network
 from neuro_san_studio.commands.check_config import extract_llm_configs_from_studio_config
 from neuro_san_studio.commands.check_config import parse_hocon_file
@@ -60,37 +61,37 @@ class TestExpandFallbacks(TestCase):
         self.assertEqual(result[0], ("MusicNerd (fallback 0)", {"model_name": "gpt-5-mini"}))
         self.assertEqual(result[1], ("MusicNerd (fallback 1)", {"model_name": "claude-sonnet-4-6"}))
 
-    def test_fallbacks_with_model_name_next_to_list_tests_only_the_list(self):
-        """A model_name next to the fallbacks list is never used by neuro-san, so it is warned about, not tested."""
+    def test_fallbacks_with_model_name_next_to_list_tests_only_the_list(self) -> None:
+        """A model_name next to the fallbacks list is never used by neuro-san, so it is reported, not tested."""
         config = {
             "model_name": "gpt-5-mini",
             "temperature": 0.2,
             "fallbacks": [{"model_name": "claude-sonnet-4-6"}],
         }
-        with patch("builtins.print") as mock_print:
-            result = _expand_fallbacks("MyAgent", config)
+        result = _expand_fallbacks("MyAgent", config)
         self.assertEqual(result, [("MyAgent (fallback 0)", {"model_name": "claude-sonnet-4-6"})])
-        printed = " ".join(str(call.args[0]) for call in mock_print.call_args_list)
-        self.assertIn("WARNING: MyAgent: model_name, temperature next to 'fallbacks' is ignored", printed)
+        self.assertEqual(_ignored_fallback_keys(config), ("model_name", "temperature"))
 
-    def test_fallbacks_alone_prints_no_warning(self):
-        """A config with only a fallbacks list, as the stock llm_config files have, prints no warning."""
-        config = {"fallbacks": [{"model_name": "gpt-5-mini"}]}
-        with patch("builtins.print") as mock_print:
-            _expand_fallbacks("MyAgent", config)
-        mock_print.assert_not_called()
+    def test_fallbacks_alone_ignore_nothing(self) -> None:
+        """A config with only a fallbacks list, as the stock llm_config files have, ignores no key."""
+        self.assertEqual(_ignored_fallback_keys({"fallbacks": [{"model_name": "gpt-5-mini"}]}), ())
 
-    def test_provider_tools_and_verbose_next_to_fallbacks_are_not_reported(self):
-        """provider_tools and verbose are still read next to the fallbacks list, so they are not warned about."""
+    def test_provider_tools_and_verbose_next_to_fallbacks_are_not_ignored(self) -> None:
+        """provider_tools and verbose are still read next to the fallbacks list, so they are not reported."""
         config = {
             "provider_tools": [{"type": "web_search"}],
             "verbose": True,
             "fallbacks": [{"model_name": "gpt-5-mini"}],
         }
-        with patch("builtins.print") as mock_print:
-            result = _expand_fallbacks("MyAgent", config)
-        self.assertEqual(result, [("MyAgent (fallback 0)", {"model_name": "gpt-5-mini"})])
-        mock_print.assert_not_called()
+        self.assertEqual(
+            _expand_fallbacks("MyAgent", config), [("MyAgent (fallback 0)", {"model_name": "gpt-5-mini"})]
+        )
+        self.assertEqual(_ignored_fallback_keys(config), ())
+
+    def test_no_fallbacks_list_ignores_nothing(self) -> None:
+        """Without a non-empty fallbacks list, every key is used, so none is reported."""
+        self.assertEqual(_ignored_fallback_keys({"model_name": "gpt-5-mini"}), ())
+        self.assertEqual(_ignored_fallback_keys({"model_name": "gpt-5-mini", "fallbacks": []}), ())
 
     def test_single_fallback_entry(self):
         """A fallbacks list with one element produces exactly one result entry."""
@@ -213,6 +214,15 @@ class TestExtractLlmConfigsFromStudioConfig(TestCase):
         result = extract_llm_configs_from_studio_config(config, "config/llm_config.hocon")
         self.assertEqual(result, [("config/llm_config.hocon", {"model_name": "gpt-5-mini"})])
 
+    def test_key_ignored_next_to_fallbacks_is_warned_about_with_the_file(self) -> None:
+        """A standalone llm_config with a model_name next to fallbacks warns once, naming the file."""
+        config = {"llm_config": {"model_name": "gemini-3-flash", "fallbacks": [{"model_name": "claude-sonnet"}]}}
+        with patch("builtins.print") as mock_print:
+            result = extract_llm_configs_from_studio_config(config, "config/my_llm_config.hocon")
+        self.assertEqual(result, [("config/my_llm_config.hocon (fallback 0)", {"model_name": "claude-sonnet"})])
+        mock_print.assert_called_once()
+        self.assertIn("for config/my_llm_config.hocon.", mock_print.call_args.args[0])
+
     def test_llm_config_with_fallbacks_is_expanded(self):
         """A studio llm_config that uses a fallbacks list is expanded into one entry per fallback."""
         config = {
@@ -293,6 +303,18 @@ class TestExtractLlmConfigsFromAgentNetwork(TestCase):
         self.assertEqual(result[0][1], {"model_name": "gpt-5-mini"})
         self.assertEqual(result[1][0], "MusicNerd (fallback 1)")
         self.assertEqual(result[1][1], {"model_name": "claude-sonnet-4-6"})
+
+    def test_key_ignored_by_every_agent_is_warned_about_once(self) -> None:
+        """A model_name next to the top-level fallbacks list is one warning that names every agent."""
+        config = {
+            "llm_config": {"model_name": "gemini-3-flash", "fallbacks": [{"model_name": "claude-sonnet"}]},
+            "tools": [{"name": "AgentA"}, {"name": "AgentB"}, {"name": "CodedToolC", "class": "some.CodedClass"}],
+        }
+        with patch("builtins.print") as mock_print:
+            extract_llm_configs_from_agent_network(self._make_network(config))
+        mock_print.assert_called_once()
+        warning = mock_print.call_args.args[0]
+        self.assertIn("WARNING: model_name next to 'fallbacks' is ignored at run time for AgentA, AgentB.", warning)
 
     def test_no_tools_returns_empty_list(self):
         """An agent network with an empty tools list produces no results."""

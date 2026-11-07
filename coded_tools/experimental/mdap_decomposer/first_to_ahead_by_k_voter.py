@@ -52,7 +52,7 @@ class FirstToAheadByKVoter(Voter):
         discriminator_caller: AgentCaller,
         lead_required: int = 2,
         max_votes: int = 9,
-    ):
+    ) -> None:
         """
         Constructor.
 
@@ -80,13 +80,45 @@ class FirstToAheadByKVoter(Voter):
         Ask the discriminator in rounds until one candidate leads by lead_required votes,
         or until max_votes calls have been made. Overrides Voter.vote().
 
+        Equal candidates are voted on as one, as equal answers are in the MAKER paper,
+        so that copies of the same answer do not split its votes.
+
         :param problem: The problem to be solved
         :param candidates: The candidate solutions
-        :return: A tuple of (list of number of votes per candidate, winner index)
+        :return: A tuple of (list of number of votes per candidate, winner index). A group of
+            equal candidates reports its votes on its first copy, which is also the one that wins.
         """
         if not candidates:
             raise ValueError(f"{self.source} cannot vote on an empty list of candidates")
 
+        distinct: list[str] = []
+        first_index: list[int] = []
+        # Keep the first copy of each candidate, remembering where it came from
+        for index, candidate in enumerate(candidates):
+            if candidate not in distinct:
+                distinct.append(candidate)
+                first_index.append(index)
+        if len(distinct) < len(candidates):
+            logging.info("%s merged %d equal candidates into %d", self.source, len(candidates), len(distinct))
+
+        distinct_votes, distinct_winner = await self._vote_on_distinct(problem, distinct)
+
+        votes: list[int] = [0] * len(candidates)
+        # Report each group's votes on its first copy
+        for position, index in enumerate(first_index):
+            votes[index] = distinct_votes[position]
+        winner_idx: int = first_index[distinct_winner]
+        logging.info("%s final winner: %d -> %s", self.source, winner_idx + 1, candidates[winner_idx])
+        return votes, winner_idx
+
+    async def _vote_on_distinct(self, problem: str, candidates: list[str]) -> tuple[list[int], int]:
+        """
+        Run the vote on candidates that are all different from one another.
+
+        :param problem: The problem to be solved
+        :param candidates: The distinct candidate solutions, at least one
+        :return: A tuple of (list of number of votes per candidate, winner index)
+        """
         votes: list[int] = [0] * len(candidates)
         if len(candidates) == 1:
             # A lone candidate wins outright; asking the discriminator would only cost calls.
@@ -125,7 +157,6 @@ class FirstToAheadByKVoter(Voter):
                 winner_idx + 1,
             )
 
-        logging.info("%s final winner: %d -> %s", self.source, winner_idx + 1, candidates[winner_idx])
         return votes, winner_idx
 
     def _votes_that_could_decide(self, votes: list[int]) -> int:

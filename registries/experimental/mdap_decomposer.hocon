@@ -66,8 +66,18 @@ I can take a problem and solve it by breaking it up into smaller pieces.
                         },
                         "winning_vote_count": {
                             "type": "int",
-                            "description": "Number of votes required to win."
+                            "description": "K: the votes a candidate needs with first_to_k, or the lead it needs over every other with first_to_ahead_by_k."
                             "default": 2
+                        },
+                        "voting_rule": {
+                            "type": "string",
+                            "enum": ["first_to_k", "first_to_ahead_by_k"],
+                            "description": "How a vote picks a winner: first_to_k, or first_to_ahead_by_k as in the MAKER paper."
+                            "default": "first_to_k"
+                        },
+                        "max_votes": {
+                            "type": "int",
+                            "description": "For first_to_ahead_by_k only: the most discriminator calls one vote may make."
                         }
                     }
                     "required": [ "problem" ]
@@ -116,7 +126,7 @@ that is carried out by this tool.
                         },
                         "winning_vote_count": {
                             "type": "int",
-                            "description": "Number of votes required to win."
+                            "description": "K: the votes a candidate needs with first_to_k, or the lead it needs over every other with first_to_ahead_by_k."
                             "default": 2
                         },
                         "candidate_count": {
@@ -126,7 +136,7 @@ that is carried out by this tool.
                         },
                         "number_of_votes": {
                             "type": "int",
-                            "description": "Number of candidates for any round of voting."
+                            "description": "For first_to_k only: the discriminator calls for any round of voting. first_to_ahead_by_k uses max_votes instead."
                             "default": 3
                         },
                         "solution_candidate_count": {

@@ -58,7 +58,8 @@ class NeuroSanSolver:
         :param voting_rule: first_to_k (the default) or first_to_ahead_by_k.
         :param max_votes: For first_to_ahead_by_k, the most discriminator calls per vote before
             the plurality wins. Defaults to 4 * winning_vote_count + 1, which is 9 for K = 2.
-        :raises ValueError: For a voting_rule that is not one of VOTING_RULES.
+        :raises ValueError: For a voting_rule that is not one of VOTING_RULES, or, with
+            first_to_ahead_by_k, a winning_vote_count below 1 or a max_votes below it.
         """
 
         if winning_vote_count is None:
@@ -85,9 +86,19 @@ class NeuroSanSolver:
             raise ValueError(f"Unknown voting_rule {voting_rule!r}: use one of {', '.join(self.VOTING_RULES)}")
         self.voting_rule: str = voting_rule
 
+        if voting_rule == self.FIRST_TO_K and max_votes is not None:
+            logging.warning(
+                "max_votes=%s is ignored: it applies only to the %s voting rule", max_votes, self.FIRST_TO_AHEAD_BY_K
+            )
         self.max_votes: int = max_votes
         if self.max_votes is None:
             self.max_votes = 4 * winning_vote_count + 1
+        if voting_rule == self.FIRST_TO_AHEAD_BY_K and not 1 <= winning_vote_count <= self.max_votes:
+            # Checked here so that a bad setting fails before any agent is called, not at the first vote.
+            raise ValueError(
+                f"{self.FIRST_TO_AHEAD_BY_K} needs winning_vote_count of at least 1 and max_votes of at least "
+                f"winning_vote_count, got {winning_vote_count} and {self.max_votes}"
+            )
 
         self.parsing = SolverParsing()
 

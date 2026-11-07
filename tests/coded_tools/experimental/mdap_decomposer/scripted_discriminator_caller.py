@@ -28,7 +28,7 @@ class ScriptedDiscriminatorCaller(AgentCaller):
     asyncio.gather) are all in flight at once, so each burst of concurrent calls is one round.
     """
 
-    def __init__(self, answers: list[str]):
+    def __init__(self, answers: list[str]) -> None:
         """
         Constructor.
 

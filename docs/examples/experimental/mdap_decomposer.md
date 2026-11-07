@@ -101,11 +101,13 @@ to call back out to the agents available in the network:
    the mapping is used as a convention to allow for proper connectivity reporting for visualizing
    clients.
 
-Two voting rules are available through the `voting_rule` tool argument. The default, `first_to_k`, picks
-the first candidate to get K votes (`FirstToKVoter`). `first_to_ahead_by_k` is the rule the original MAKER
-paper uses (`FirstToAheadByKVoter`). It asks the discriminator in rounds until one candidate leads every
-other by K votes. Each round asks only for as many votes as could still decide, so the first round is K
-calls in parallel. Malformed or out-of-range votes are logged and discarded.
+Two voting rules are available through the `voting_rule` argument, which both `multiagent_decomposer` and
+`decomposition_solver` accept. The default, `first_to_k`, picks the first candidate to get K votes
+(`FirstToKVoter`). `first_to_ahead_by_k` is the rule the original MAKER paper uses (`FirstToAheadByKVoter`). It
+asks the discriminator in rounds until one candidate leads every other by K votes. Each round asks only for as
+many votes as could still decide, so the first round is K calls in parallel. Equal candidates are voted on as
+one, so that copies of the same answer do not split its votes. Malformed or out-of-range votes are logged and
+discarded.
 
 Unlike the paper, it stops at `max_votes` calls and then picks the candidate with the most votes, so that
 one contested step cannot run unbounded. In the paper each vote is an independent sample of the answer.

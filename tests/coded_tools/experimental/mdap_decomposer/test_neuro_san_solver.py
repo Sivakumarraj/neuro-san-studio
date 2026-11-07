@@ -78,3 +78,16 @@ class TestNeuroSanSolver(TestCase):
             NeuroSanSolver(voting_rule="majority")
         self.assertIn("first_to_k", str(raised_error.exception))
         self.assertIn("first_to_ahead_by_k", str(raised_error.exception))
+
+    def test_bad_ahead_by_k_settings_fail_before_any_vote(self) -> None:
+        """A lead below 1, or a cap below the lead, is refused when the solver is built."""
+        with self.assertRaises(ValueError):
+            NeuroSanSolver(winning_vote_count=0, voting_rule="first_to_ahead_by_k")
+        with self.assertRaises(ValueError):
+            NeuroSanSolver(winning_vote_count=3, voting_rule="first_to_ahead_by_k", max_votes=2)
+
+    def test_max_votes_with_first_to_k_is_warned_about(self) -> None:
+        """max_votes has no effect on first_to_k, so setting it there is reported rather than ignored silently."""
+        with self.assertLogs(level="WARNING") as captured:
+            NeuroSanSolver(max_votes=7)
+        self.assertIn("max_votes=7 is ignored", "\n".join(captured.output))

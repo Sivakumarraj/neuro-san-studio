@@ -35,6 +35,12 @@ class FirstToAheadByKVoter(Voter):
 
     A malformed or out-of-range vote is red-flagged: logged and discarded. It still counts
     toward max_votes, because it cost a discriminator call.
+
+    Two differences from the paper's Algorithm 2. It has no cap, while this voter stops at
+    max_votes and falls back to the plurality, so that one contested step cannot run
+    unbounded; such a vote is undecided in the paper's terms. And there each vote is an
+    independent sample of the answer, while here a discriminator picks from a fixed list,
+    so the paper's guarantee rests on the discriminator's accuracy per call.
     """
 
     # pylint: disable=too-many-arguments, too-many-positional-arguments
@@ -137,6 +143,8 @@ class FirstToAheadByKVoter(Voter):
 
     def _leader(self, votes: list[int]) -> int | None:
         """
+        Find the candidate, if any, that has reached the required lead.
+
         :param votes: The current tally, one entry per candidate (at least two)
         :return: The index of the candidate that leads every other by lead_required votes, or None
         """

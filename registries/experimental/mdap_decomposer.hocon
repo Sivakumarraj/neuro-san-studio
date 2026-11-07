@@ -134,6 +134,16 @@ that is carried out by this tool.
                             "description": "Number of candidates to consider during the problem solving stage.",
                             "default": 3
                         },
+                        "voting_rule": {
+                            "type": "string",
+                            "enum": ["first_to_k", "first_to_ahead_by_k"],
+                            "description": "How a vote picks a winner. first_to_k: the first candidate to get winning_vote_count votes. first_to_ahead_by_k, as in the MAKER paper: keep asking until one candidate leads every other by winning_vote_count votes, up to max_votes calls.",
+                            "default": "first_to_k"
+                        },
+                        "max_votes": {
+                            "type": "int",
+                            "description": "For first_to_ahead_by_k only: the most discriminator calls one vote may make before the candidate with the most votes wins. Defaults to 4 x winning_vote_count + 1."
+                        },
                     },
                     "required": ["problem"]
                 }

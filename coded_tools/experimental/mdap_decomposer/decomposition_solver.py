@@ -114,6 +114,8 @@ class DecompositionSolver(BranchActivation, CodedTool):
             candidate_count=args.get("candidate_count"),
             number_of_votes=args.get("number_of_votes"),
             solution_candidate_count=args.get("solution_candidate_count"),
+            voting_rule=args.get("voting_rule"),
+            max_votes=args.get("max_votes"),
         )
 
         tools: Dict[str, str] = {}

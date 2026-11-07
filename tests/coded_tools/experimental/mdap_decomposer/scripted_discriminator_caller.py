@@ -73,18 +73,24 @@ class ScriptedDiscriminatorCaller(AgentCaller):
 
     def call_count(self) -> int:
         """
+        Count the discriminator calls made so far.
+
         :return: How many times the discriminator was called
         """
         return len(self._calls)
 
     def round_sizes(self) -> list[int]:
         """
+        Report how the calls were batched.
+
         :return: The number of calls in each burst of concurrent calls, in order
         """
         return list(self._round_sizes)
 
     def first_call_args(self) -> dict[str, Any]:
         """
+        Report what the first call passed to the discriminator.
+
         :return: The tool_args of the first call
         """
         return self._calls[0]

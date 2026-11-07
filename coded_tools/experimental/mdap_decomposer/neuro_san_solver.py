@@ -19,6 +19,7 @@ from asyncio import Future
 from asyncio import gather
 from typing import Any
 
+from coded_tools.experimental.mdap_decomposer.first_to_ahead_by_k_voter import FirstToAheadByKVoter
 from coded_tools.experimental.mdap_decomposer.first_to_k_voter import FirstToKVoter
 from coded_tools.experimental.mdap_decomposer.voter import Voter
 from neuro_san_studio.coded_tools.agent_caller import AgentCaller
@@ -31,15 +32,33 @@ class NeuroSanSolver:
     Generic solver implementation that uses Neuro SAN.
     """
 
+    # The voting rules the solver can use; see make_voter().
+    FIRST_TO_K: str = "first_to_k"
+    FIRST_TO_AHEAD_BY_K: str = "first_to_ahead_by_k"
+    VOTING_RULES: tuple[str, ...] = (FIRST_TO_K, FIRST_TO_AHEAD_BY_K)
+
+    # pylint: disable=too-many-arguments, too-many-positional-arguments
     def __init__(
         self,
         winning_vote_count: int = 2,
         candidate_count: int = None,
         number_of_votes: int = None,
         solution_candidate_count: int = None,
+        voting_rule: str = None,
+        max_votes: int = None,
     ):
         """
         Constructor.
+
+        :param winning_vote_count: K. For first_to_k, the votes a candidate needs to win; for
+            first_to_ahead_by_k, the lead it needs over every other candidate.
+        :param candidate_count: Number of decompositions to vote on.
+        :param number_of_votes: For first_to_k, the discriminator calls per vote.
+        :param solution_candidate_count: Number of solutions to vote on.
+        :param voting_rule: first_to_k (the default) or first_to_ahead_by_k.
+        :param max_votes: For first_to_ahead_by_k, the most discriminator calls per vote before
+            the plurality wins. Defaults to 4 * winning_vote_count + 1, which is 9 for K = 2.
+        :raises ValueError: For a voting_rule that is not one of VOTING_RULES.
         """
 
         if winning_vote_count is None:
@@ -59,6 +78,16 @@ class NeuroSanSolver:
         self.solution_candidate_count: int = solution_candidate_count
         if self.solution_candidate_count is None:
             self.solution_candidate_count = default_count
+
+        if voting_rule is None:
+            voting_rule = self.FIRST_TO_K
+        if voting_rule not in self.VOTING_RULES:
+            raise ValueError(f"Unknown voting_rule {voting_rule!r}: use one of {', '.join(self.VOTING_RULES)}")
+        self.voting_rule: str = voting_rule
+
+        self.max_votes: int = max_votes
+        if self.max_votes is None:
+            self.max_votes = 4 * winning_vote_count + 1
 
         self.parsing = SolverParsing()
 
@@ -222,17 +251,40 @@ class NeuroSanSolver:
             finals.append(self.parsing.extract_final(r))
             logging.info("%s candidate %d: %s", source, k + 1, finals[-1])
 
-        voter: Voter = FirstToKVoter(
-            source,
-            "composition",
-            "solutions",
-            self.composition_discriminator_caller,
-            self.number_of_votes,
-            self.winning_vote_count,
-        )
+        voter: Voter = self.make_voter(source, "composition", "solutions", self.composition_discriminator_caller)
         votes, winner_idx = await voter.vote(problem, finals)
 
         return solutions[winner_idx], finals, votes, winner_idx, solutions
+
+    def make_voter(
+        self, source: str, discriminator_name: str, candidates_key: str, discriminator_caller: AgentCaller
+    ) -> Voter:
+        """
+        Build the Voter for one vote, by the solver's voting rule.
+
+        :param source: A label that prefixes every log message
+        :param discriminator_name: The name of the discriminator agent, for log messages
+        :param candidates_key: The tool_args key under which the candidates are passed
+        :param discriminator_caller: The AgentCaller that asks the discriminator for one vote
+        :return: A FirstToAheadByKVoter for first_to_ahead_by_k, otherwise a FirstToKVoter
+        """
+        if self.voting_rule == self.FIRST_TO_AHEAD_BY_K:
+            return FirstToAheadByKVoter(
+                source,
+                discriminator_name,
+                candidates_key,
+                discriminator_caller,
+                lead_required=self.winning_vote_count,
+                max_votes=self.max_votes,
+            )
+        return FirstToKVoter(
+            source,
+            discriminator_name,
+            candidates_key,
+            discriminator_caller,
+            self.number_of_votes,
+            self.winning_vote_count,
+        )
 
     # pylint: disable=too-many-locals
     async def decompose(self, problem: str) -> tuple[str | None, str | None, str | None, dict]:
@@ -261,14 +313,7 @@ class NeuroSanSolver:
         if not candidates:
             return None, None, None, {}
 
-        voter: Voter = FirstToKVoter(
-            "[decompose]",
-            "solution",
-            "decompositions",
-            self.solution_discriminator_caller,
-            self.number_of_votes,
-            self.winning_vote_count,
-        )
+        voter: Voter = self.make_voter("[decompose]", "solution", "decompositions", self.solution_discriminator_caller)
         votes, winner_idx = await voter.vote(problem, candidates)
 
         p1, p2, c = self.parsing.parse_decomposition(candidates[winner_idx])

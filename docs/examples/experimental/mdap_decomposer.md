@@ -101,13 +101,16 @@ to call back out to the agents available in the network:
    the mapping is used as a convention to allow for proper connectivity reporting for visualizing
    clients.
 
-Within this implementation there is also an example of using first-to-K voting.
-In the future we may augment this with different voting strategies selectable by parameters.
-For instance the original MAKER paper uses ahead-by-K voting. `FirstToAheadByKVoter` implements it
-as a drop-in `Voter`: it asks the discriminator in rounds until one candidate leads every other
-candidate by K votes, asking each round only for as many votes as could still decide, and stops
-at `max_votes` calls. Malformed or out-of-range votes are logged and discarded. It is not yet
-selectable from the tool arguments; `NeuroSanSolver` still uses `FirstToKVoter`.
+Two voting rules are available through the `voting_rule` tool argument. The default, `first_to_k`, picks
+the first candidate to get K votes (`FirstToKVoter`). `first_to_ahead_by_k` is the rule the original MAKER
+paper uses (`FirstToAheadByKVoter`). It asks the discriminator in rounds until one candidate leads every
+other by K votes. Each round asks only for as many votes as could still decide, so the first round is K
+calls in parallel. Malformed or out-of-range votes are logged and discarded.
+
+Unlike the paper, it stops at `max_votes` calls and then picks the candidate with the most votes, so that
+one contested step cannot run unbounded. In the paper each vote is an independent sample of the answer.
+Here a discriminator agent picks from a fixed list of candidates, so the rule's guarantee depends on how
+often the discriminator is right.
 
 #### Tool Arguments and Parameters
 
@@ -122,6 +125,12 @@ selectable from the tool arguments; `NeuroSanSolver` still uses `FirstToKVoter`.
 - `number_of_votes`: Number of candidates for any round of voting.
 
 - `solution_candidate_count`: Number of candidates to consider during the problem solving stage.
+
+- `voting_rule`: `first_to_k` (the default) or `first_to_ahead_by_k`. For `first_to_ahead_by_k`,
+    `winning_vote_count` is the lead K that a candidate needs over every other.
+
+- `max_votes`: For `first_to_ahead_by_k` only, the most discriminator calls one vote may make before the
+    candidate with the most votes wins. Defaults to 4 x `winning_vote_count` + 1.
 
 - `tools`: A dictionary of agents to use for various stages of the decomposition.
     Keys are strings which are names for abstract roles for the implementation to use,

@@ -22,7 +22,7 @@ import numpy as np
 from neuro_san.interfaces.coded_tool import CodedTool
 
 from coded_tools.experimental.decision_prescriptor.decision_keys import DecisionKeys
-from coded_tools.experimental.decision_prescriptor.ridge_surrogate import RidgeSurrogate
+from coded_tools.experimental.decision_prescriptor.quadratic_surrogate import QuadraticSurrogate
 from coded_tools.experimental.decision_prescriptor.training_arrays import TrainingArrays
 
 logger = logging.getLogger(__name__)
@@ -34,17 +34,19 @@ class FitSurrogate(CodedTool):
     that stands in for reality during the search.
     """
 
-    # Below this R-squared on any outcome, the front is flagged as indicative only.
+    # Below this held-out R-squared on any outcome, the front is flagged as indicative only.
     WEAK_FIT: float = 0.5
 
     def invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
         """
-        Fit ridge regression from (context, action) to outcomes and report its fit.
+        Fit a second-order ridge model from (context, action) to outcomes and report its fit.
 
         The R-squared per outcome is returned rather than hidden, because it is
         the honest ceiling on everything downstream: a prescriptor evolved against
         a weak surrogate has optimized a bad map of the world, and the resulting
-        front should not be trusted just because it is drawn precisely.
+        front should not be trusted just because it is drawn precisely. It is the
+        leave-one-out R-squared, since in-sample R-squared stays high on noise
+        whenever there are nearly as many model terms as records.
 
         :param args: May contain "alpha", the ridge regularization strength.
         :param sly_data: Must already hold the dataset; the fitted model is written here.
@@ -67,20 +69,28 @@ class FitSurrogate(CodedTool):
         )
         features: np.ndarray = np.hstack([arrays.get("context"), arrays.get("action")])
 
-        surrogate: RidgeSurrogate = RidgeSurrogate(alpha=alpha).fit(features, arrays.get("outcome"))
-        scores: np.ndarray = surrogate.r_squared(features, arrays.get("outcome"))
+        surrogate: QuadraticSurrogate = QuadraticSurrogate(alpha=alpha).fit(features, arrays.get("outcome"))
+        try:
+            scores: np.ndarray = surrogate.leave_one_out_r_squared(features, arrays.get("outcome"))
+        except ValueError as error:
+            # Drop any model from an earlier fit, so a later stage cannot search against a stale one.
+            sly_data.pop(DecisionKeys.SURROGATE, None)
+            return self._error(str(error))
 
         sly_data[DecisionKeys.SURROGATE] = surrogate
 
-        reported: str = ", ".join(f"{name} R²={score:.3f}" for name, score in zip(spec.get("outcome_fields"), scores))
+        reported: str = ", ".join(f"{name} {score:.3f}" for name, score in zip(spec.get("outcome_fields"), scores))
         weakest: float = float(np.min(scores))
         caveat: str = (
             " Fit is weak, so treat the front as indicative only."
             if weakest < self.WEAK_FIT
             else " Fit is strong enough to search against."
         )
-        logger.info("Fitted surrogate on %d records, weakest R-squared %.3f", len(rows), weakest)
-        return f"Surrogate fitted on {len(rows)} records (alpha={alpha:g}). {reported}.{caveat}"
+        logger.info("Fitted surrogate on %d records, weakest held-out R-squared %.3f", len(rows), weakest)
+        return (
+            f"Surrogate fitted on {len(rows)} records (alpha={alpha:g}), with interaction and curvature terms. "
+            f"Held-out R² (each record predicted by a model fitted without it): {reported}.{caveat}"
+        )
 
     async def async_invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
         """

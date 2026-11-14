@@ -50,6 +50,37 @@ class TestSampleData(TestCase):
         self.assertLess(float(np.corrcoef(staffing, margin)[0, 1]), -0.5)
         self.assertLess(float(np.corrcoef(staffing, risk)[0, 1]), -0.5)
 
+    def test_targeting_senior_staff_at_urgent_work_beats_spreading_them(self):
+        """
+        With the same average senior ratio, putting senior staff on the urgent engagements
+        keeps margin and time to value and cuts delivery risk.
+
+        That is the interaction that gives a context-aware policy something to find; without
+        it every policy would score the same as one fixed action.
+        """
+        urgency = np.linspace(0.0, 1.0, 101)
+        context = np.column_stack([np.full(101, 5.0), urgency])
+        targeted_ratio = np.where(urgency > 0.5, 0.9, 0.1)
+        spread_ratio = np.full(101, targeted_ratio.mean())
+        automation = np.full(101, 0.5)
+
+        targeted = SampleData.expected_outcomes(context, np.column_stack([targeted_ratio, automation])).mean(axis=0)
+        spread = SampleData.expected_outcomes(context, np.column_stack([spread_ratio, automation])).mean(axis=0)
+
+        self.assertAlmostEqual(float(targeted[0]), float(spread[0]), places=9)
+        self.assertAlmostEqual(float(targeted[2]), float(spread[2]), places=9)
+        self.assertLess(float(targeted[1]), float(spread[1]) - 0.05)
+
+    def test_automation_pays_on_large_accounts_and_costs_on_small_ones(self):
+        """The second interaction: automating a small account loses margin, automating a large one gains it."""
+        context = np.array([[0.5, 0.5], [10.0, 0.5]])
+        senior = np.full(2, 0.5)
+        without = SampleData.expected_outcomes(context, np.column_stack([senior, np.zeros(2)]))
+        with_automation = SampleData.expected_outcomes(context, np.column_stack([senior, np.ones(2)]))
+
+        self.assertLess(float(with_automation[0, 0]), float(without[0, 0]))
+        self.assertGreater(float(with_automation[1, 0]), float(without[1, 0]))
+
     def test_is_reproducible(self):
         """The same seed must give the same example."""
         self.assertEqual(SampleData.generate(10, seed=3), SampleData.generate(10, seed=3))

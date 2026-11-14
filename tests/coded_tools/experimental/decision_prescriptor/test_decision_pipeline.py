@@ -19,6 +19,9 @@ import os
 import tempfile
 from unittest import TestCase
 
+import numpy as np
+
+from coded_tools.experimental.decision_prescriptor.decision_keys import DecisionKeys
 from coded_tools.experimental.decision_prescriptor.evolve_prescriptors import EvolvePrescriptors
 from coded_tools.experimental.decision_prescriptor.fit_surrogate import FitSurrogate
 from coded_tools.experimental.decision_prescriptor.load_decision_problem import LoadDecisionProblem
@@ -109,6 +112,56 @@ class TestDecisionPipeline(TestCase):
         sly_data = {}
         LoadDecisionProblem().invoke({}, sly_data)
         self.assertTrue(FitSurrogate().invoke({"alpha": "wide"}, sly_data).startswith("Error:"))
+
+    def test_memorized_noise_is_reported_as_a_weak_fit(self):
+        """
+        Sixty records of pure noise with eight inputs: the second-order model has 44 terms,
+        enough to look strong in-sample. The held-out fit must expose it.
+        """
+        rng = np.random.default_rng(5)
+        rows = []
+        for _ in range(60):
+            values = rng.normal(size=10)
+            rows.append({f"x{index}": float(value) for index, value in enumerate(values)})
+        sly_data = {}
+        LoadDecisionProblem().invoke(
+            {
+                "rows": rows,
+                "context_fields": [f"x{index}" for index in range(6)],
+                "action_fields": ["x6", "x7"],
+                "outcome_fields": ["x8", "x9"],
+                "maximize": [True, False],
+            },
+            sly_data,
+        )
+        message = FitSurrogate().invoke({}, sly_data)
+        self.assertIn("Held-out R²", message)
+        self.assertIn("Fit is weak", message)
+
+    def test_an_unmeasurable_fit_is_refused_and_drops_the_earlier_model(self):
+        """
+        Five records against six model columns with no penalty: the model fits every record
+        exactly, so its held-out error cannot be measured. The tool must say so, and must not
+        leave a model from an earlier fit behind for the search to use.
+        """
+        sly_data = {}
+        LoadDecisionProblem().invoke({}, sly_data)
+        FitSurrogate().invoke({}, sly_data)
+        self.assertIn(DecisionKeys.SURROGATE, sly_data)
+
+        rows = [{"a": float(i), "b": float(i * i % 4), "c": float(3 * i % 5)} for i in range(5)]
+        LoadDecisionProblem().invoke(
+            {
+                "rows": rows,
+                "context_fields": ["a"],
+                "action_fields": ["b"],
+                "outcome_fields": ["c"],
+                "maximize": [True],
+            },
+            sly_data,
+        )
+        self.assertTrue(FitSurrogate().invoke({"alpha": 0}, sly_data).startswith("Error:"))
+        self.assertNotIn(DecisionKeys.SURROGATE, sly_data)
 
     def test_oversized_search_is_rejected(self):
         """A search past the caps would hold the server for an unbounded time."""

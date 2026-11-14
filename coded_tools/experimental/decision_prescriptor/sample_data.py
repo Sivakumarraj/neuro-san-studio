@@ -34,8 +34,16 @@ class SampleData:
     * senior staffing lowers delivery risk but costs margin;
     * automation lifts margin but pushes out time to value while it is set up.
 
-    An optimizer that returned a single answer here would be hiding one of those
-    exchanges. The Pareto front surfaces both and leaves the choice with a human.
+    It also builds in two interactions, because a prescriptor policy is only worth
+    evolving when the best decision depends on the situation:
+
+    * senior staff cut risk far more on urgent engagements than on calm ones;
+    * automation pays off on large accounts, while on small ones its set-up costs
+      more margin than it saves.
+
+    So spreading senior staff evenly, or automating everywhere, is beaten by a policy
+    that targets them. Those benefits exist because they are written into
+    expected_outcomes below, not because they were discovered in real data.
     """
 
     CONTEXT_FIELDS: tuple[str, ...] = ("account_size", "urgency")
@@ -43,10 +51,50 @@ class SampleData:
     OUTCOME_FIELDS: tuple[str, ...] = ("margin_pct", "delivery_risk", "time_to_value_weeks")
     OUTCOME_MAXIMIZE: tuple[bool, ...] = (True, False, False)
 
+    # Standard deviation of the noise added to each outcome, in OUTCOME_FIELDS order.
+    NOISE: tuple[float, ...] = (0.8, 0.02, 0.5)
+
+    @staticmethod
+    def expected_outcomes(context: np.ndarray, action: np.ndarray) -> np.ndarray:
+        """
+        The noise-free outcomes the example is generated from: its ground truth.
+
+        Kept separate from generate so a test can check whether a strategy is better in
+        truth, not merely according to the surrogate fitted on the noisy records.
+
+        :param context: Rows of (account_size, urgency), shape (num_rows, 2).
+        :param action: Rows of (senior_staff_ratio, automation_investment), shape (num_rows, 2).
+        :return: Rows of (margin_pct, delivery_risk, time_to_value_weeks), shape (num_rows, 3).
+        """
+        account_size: np.ndarray = context[:, 0]  # $M of annual revenue
+        urgency: np.ndarray = context[:, 1]
+        senior_staff_ratio: np.ndarray = action[:, 0]
+        automation_investment: np.ndarray = action[:, 1]
+
+        margin_pct: np.ndarray = (
+            22.0
+            - 14.0 * senior_staff_ratio
+            + 0.45 * account_size
+            # Automation amortizes over revenue, with diminishing returns on the investment itself.
+            + 1.2 * automation_investment * account_size
+            - 3.0 * automation_investment**2
+        )
+        delivery_risk: np.ndarray = (
+            0.50
+            + 0.30 * urgency
+            # Senior staff matter most where the engagement is urgent.
+            - 0.10 * senior_staff_ratio
+            - 0.50 * senior_staff_ratio * urgency
+        )
+        time_to_value_weeks: np.ndarray = (
+            14.0 - 5.0 * senior_staff_ratio + 7.0 * automation_investment + 0.35 * account_size
+        )
+        return np.column_stack([margin_pct, delivery_risk, time_to_value_weeks])
+
     @staticmethod
     def generate(num_rows: int = 400, seed: int = 7) -> list[dict[str, float]]:
         """
-        Generate historical engagement records.
+        Generate historical engagement records: the expected outcomes plus noise.
 
         :param num_rows: Number of records to produce.
         :param seed: Seed controlling both the sampled decisions and the noise.
@@ -54,48 +102,17 @@ class SampleData:
         """
         rng: np.random.Generator = np.random.default_rng(seed)
 
-        account_size: np.ndarray = rng.uniform(0.5, 10.0, num_rows)  # $M of annual revenue
-        urgency: np.ndarray = rng.uniform(0.0, 1.0, num_rows)
-
+        context: np.ndarray = np.column_stack([rng.uniform(0.5, 10.0, num_rows), rng.uniform(0.0, 1.0, num_rows)])
         # Historical decisions vary widely, which is what gives the surrogate
         # something to learn from across the whole action space.
-        senior_staff_ratio: np.ndarray = rng.uniform(0.05, 0.95, num_rows)
-        automation_investment: np.ndarray = rng.uniform(0.0, 1.0, num_rows)
-
-        margin_pct: np.ndarray = (
-            22.0
-            + 6.0 * automation_investment
-            - 14.0 * senior_staff_ratio
-            + 0.45 * account_size
-            + rng.normal(0.0, 0.8, num_rows)
-        )
-        delivery_risk: np.ndarray = (
-            0.55
-            - 0.38 * senior_staff_ratio
-            - 0.10 * automation_investment
-            + 0.22 * urgency
-            + rng.normal(0.0, 0.02, num_rows)
-        )
-        time_to_value_weeks: np.ndarray = (
-            14.0
-            - 5.0 * senior_staff_ratio
-            + 7.0 * automation_investment
-            + 0.35 * account_size
-            + rng.normal(0.0, 0.5, num_rows)
+        action: np.ndarray = np.column_stack([rng.uniform(0.05, 0.95, num_rows), rng.uniform(0.0, 1.0, num_rows)])
+        outcome: np.ndarray = SampleData.expected_outcomes(context, action) + rng.normal(
+            0.0, SampleData.NOISE, size=(num_rows, len(SampleData.OUTCOME_FIELDS))
         )
 
-        return [
-            {
-                "account_size": float(account_size[i]),
-                "urgency": float(urgency[i]),
-                "senior_staff_ratio": float(senior_staff_ratio[i]),
-                "automation_investment": float(automation_investment[i]),
-                "margin_pct": float(margin_pct[i]),
-                "delivery_risk": float(delivery_risk[i]),
-                "time_to_value_weeks": float(time_to_value_weeks[i]),
-            }
-            for i in range(num_rows)
-        ]
+        names: tuple[str, ...] = SampleData.CONTEXT_FIELDS + SampleData.ACTION_FIELDS + SampleData.OUTCOME_FIELDS
+        table: np.ndarray = np.hstack([context, action, outcome])
+        return [{name: float(value) for name, value in zip(names, row)} for row in table]
 
     @staticmethod
     def specification() -> dict[str, Any]:

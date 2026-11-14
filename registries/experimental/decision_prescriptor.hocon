@@ -30,7 +30,7 @@
     include "config/llm_config.hocon",
 
     "metadata": {
-        "description": "Multi-agent decision optimizer implementing Evolutionary Surrogate-assisted Prescription. Fits a ridge-regression surrogate from historical records, evolves neural prescriptor policies against it with NSGA-II, and returns a Pareto front of non-dominated strategies rendered as an interactive HTML report with trade-off, parallel-coordinate and convergence charts.",
+        "description": "Multi-agent decision optimizer implementing Evolutionary Surrogate-assisted Prescription. Fits a ridge-regression surrogate with interaction and curvature terms from historical records, evolves neural prescriptor policies against it with NSGA-II, and returns a Pareto front of non-dominated strategies rendered as an interactive HTML report with trade-off, parallel-coordinate and convergence charts.",
         "tags": ["decision-optimization", "pareto", "evolutionary", "tool", "visualization"],
         "sample_queries": [
             "Run the built-in delivery staffing example and show me the trade-offs.",
@@ -65,10 +65,10 @@ named which fields are context, which are decisions and which are outcomes, pass
 them through. If they did not, call it with no arguments to load the built-in
 delivery staffing example, and say clearly that the example data is synthetic.
 
-Stage 2 - fit the predictor. Call surrogate_modeler. Report the R-squared per
-outcome in your own words. If any outcome scores below 0.5, say plainly that the
-model does not explain that outcome well and that the strategies which follow are
-indicative only. Do not bury this.
+Stage 2 - fit the predictor. Call surrogate_modeler. Report the held-out
+R-squared per outcome in your own words. If any outcome scores below 0.5, say
+plainly that the model does not explain that outcome well and that the
+strategies which follow are indicative only. Do not bury this.
 
 Stage 3 - search for strategies. Call strategy_evolver. It returns the achievable
 range of each outcome across the front.
@@ -135,7 +135,7 @@ Rules you must not break:
         {
             "name": "surrogate_modeler",
             "function": {
-                "description": "Fits a ridge-regression surrogate predicting outcomes from context and action, and reports the R-squared per outcome.",
+                "description": "Fits a ridge-regression surrogate with interaction and curvature terms, predicting outcomes from context and action, and reports the held-out (leave-one-out) R-squared per outcome.",
                 "parameters": {
                     "type": "object",
                     "properties": {

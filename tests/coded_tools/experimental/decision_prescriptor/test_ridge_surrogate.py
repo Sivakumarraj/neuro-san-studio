@@ -80,6 +80,49 @@ class TestRidgeSurrogate(TestCase):
         surrogate = RidgeSurrogate(alpha=0.0).fit(features, targets)
         np.testing.assert_allclose(surrogate.predict(features), targets, atol=1e-9)
 
+    def test_leave_one_out_matches_explicit_refits(self):
+        """
+        The closed-form leave-one-out R² must equal refitting without each row in turn.
+
+        The reference refits the ridge solution from scratch on the same standardized
+        design with one row removed, so agreement is evidence about the leverage identity.
+        """
+        rng = np.random.default_rng(3)
+        features = rng.normal(size=(40, 3))
+        targets = rng.normal(size=(40, 2)) + features[:, :1]
+        for alpha in (0.7, 0.0):
+            surrogate = RidgeSurrogate(alpha=alpha).fit(features, targets)
+            expected = self._explicit_leave_one_out_r_squared(features, targets, alpha)
+            np.testing.assert_allclose(
+                surrogate.leave_one_out_r_squared(features, targets), expected, rtol=1e-9, atol=1e-9
+            )
+
+    def test_leave_one_out_exposes_memorized_noise(self):
+        """
+        With nearly as many features as rows, in-sample R² looks strong on pure noise.
+
+        Leave-one-out R² must not: those outcomes are unpredictable, so it falls below zero.
+        """
+        rng = np.random.default_rng(5)
+        features = rng.normal(size=(40, 24))
+        targets = rng.normal(size=(40, 2))
+        surrogate = RidgeSurrogate(alpha=1.0).fit(features, targets)
+        self.assertTrue(np.all(surrogate.r_squared(features, targets) > 0.5))
+        self.assertTrue(np.all(surrogate.leave_one_out_r_squared(features, targets) < 0.0))
+
+    def test_leave_one_out_refuses_an_interpolating_fit(self):
+        """Three rows and three columns with no penalty fit every row exactly, so nothing is held out."""
+        features = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+        targets = np.array([[1.0], [2.0], [4.0]])
+        surrogate = RidgeSurrogate(alpha=0.0).fit(features, targets)
+        with self.assertRaises(ValueError):
+            surrogate.leave_one_out_r_squared(features, targets)
+
+    def test_leave_one_out_before_fit_is_refused(self):
+        """Measuring an unfitted model would silently return nonsense."""
+        with self.assertRaises(RuntimeError):
+            RidgeSurrogate().leave_one_out_r_squared(np.zeros((2, 2)), np.zeros((2, 1)))
+
     def test_predict_before_fit_is_refused(self):
         """Predicting from an unfitted model would silently return nonsense."""
         with self.assertRaises(RuntimeError):
@@ -94,3 +137,30 @@ class TestRidgeSurrogate(TestCase):
         """Mismatched features and targets are a caller error worth naming."""
         with self.assertRaises(ValueError):
             RidgeSurrogate().fit(np.zeros((5, 2)), np.zeros((4, 1)))
+
+    @staticmethod
+    def _explicit_leave_one_out_r_squared(features: np.ndarray, targets: np.ndarray, alpha: float) -> np.ndarray:
+        """
+        Leave-one-out R² by brute force: refit without each row and predict it.
+
+        Standardization uses every row, as RidgeSurrogate's does, so only the regression is refit.
+
+        :param features: Rows of shape (num_rows, num_features).
+        :param targets: Targets of shape (num_rows, num_targets).
+        :param alpha: Ridge penalty; 0 means ordinary least squares.
+        :return: Leave-one-out R-squared per target.
+        """
+        mean = features.mean(axis=0)
+        scale = np.where(features.std(axis=0) < 1e-12, 1.0, features.std(axis=0))
+        design = np.hstack([(features - mean) / scale, np.ones((features.shape[0], 1))])
+        penalty = alpha * np.eye(design.shape[1])
+        penalty[-1, -1] = 0.0
+        held_out = np.empty_like(targets)
+        for row in range(design.shape[0]):
+            keep = np.arange(design.shape[0]) != row
+            kept_design = design[keep]
+            coefficients = np.linalg.solve(kept_design.T @ kept_design + penalty, kept_design.T @ targets[keep])
+            held_out[row] = design[row] @ coefficients
+        residual = np.sum((targets - held_out) ** 2, axis=0)
+        total = np.sum((targets - targets.mean(axis=0)) ** 2, axis=0)
+        return 1.0 - residual / total

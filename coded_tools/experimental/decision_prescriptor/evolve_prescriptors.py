@@ -28,7 +28,7 @@ from coded_tools.experimental.decision_prescriptor.nsga2 import Nsga2
 from coded_tools.experimental.decision_prescriptor.pareto_ranking import ParetoRanking
 from coded_tools.experimental.decision_prescriptor.prescriptor_evaluator import PrescriptorEvaluator
 from coded_tools.experimental.decision_prescriptor.prescriptor_network import PrescriptorNetwork
-from coded_tools.experimental.decision_prescriptor.ridge_surrogate import RidgeSurrogate
+from coded_tools.experimental.decision_prescriptor.quadratic_surrogate import QuadraticSurrogate
 from coded_tools.experimental.decision_prescriptor.standardizer import Standardizer
 from coded_tools.experimental.decision_prescriptor.training_arrays import TrainingArrays
 
@@ -52,6 +52,12 @@ class EvolvePrescriptors(CodedTool):
     # Every evolved weight is searched within [-WEIGHT_BOUND, WEIGHT_BOUND].
     WEIGHT_BOUND: float = 3.0
 
+    # Search settings used when the caller names none. The baseline tests run the search with these.
+    DEFAULT_POPULATION: int = 60
+    DEFAULT_GENERATIONS: int = 50
+    DEFAULT_HIDDEN_DIM: int = 4
+    DEFAULT_SEED: int = 0
+
     # Wiring the dataset, network, evaluator, bounds and result together happens here.
     # pylint: disable=too-many-locals
     def invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
@@ -65,17 +71,17 @@ class EvolvePrescriptors(CodedTool):
         """
         rows: list[dict[str, Any]] | None = sly_data.get(DecisionKeys.DATASET)
         spec: dict[str, Any] | None = sly_data.get(DecisionKeys.SPEC)
-        surrogate: RidgeSurrogate | None = sly_data.get(DecisionKeys.SURROGATE)
+        surrogate: QuadraticSurrogate | None = sly_data.get(DecisionKeys.SURROGATE)
         if not rows or not spec:
             return self._error("no decision problem loaded yet. Load the problem first.")
         if surrogate is None:
             return self._error("the surrogate has not been fitted yet. Fit it before evolving prescriptors.")
 
         try:
-            population_size: int = int(args.get("population_size", 60))
-            generations: int = int(args.get("generations", 50))
-            hidden_dim: int = int(args.get("hidden_dim", 4))
-            seed: int = int(args.get("seed", 0))
+            population_size: int = int(args.get("population_size", self.DEFAULT_POPULATION))
+            generations: int = int(args.get("generations", self.DEFAULT_GENERATIONS))
+            hidden_dim: int = int(args.get("hidden_dim", self.DEFAULT_HIDDEN_DIM))
+            seed: int = int(args.get("seed", self.DEFAULT_SEED))
         except (TypeError, ValueError):
             return self._error("population_size, generations, hidden_dim and seed must all be whole numbers.")
         if min(population_size, generations, hidden_dim) < 1:
@@ -95,31 +101,15 @@ class EvolvePrescriptors(CodedTool):
         arrays: dict[str, np.ndarray] = TrainingArrays.build(
             rows, spec.get("context_fields"), spec.get("action_fields"), outcome_fields
         )
-        context: np.ndarray = arrays.get("context")
-        action: np.ndarray = arrays.get("action")
 
-        # Actions are held inside the range the historical data actually covers.
-        # Outside it the surrogate is extrapolating, and its predictions there are
-        # a property of the model rather than evidence about the world.
-        network = PrescriptorNetwork(
-            context_dim=context.shape[1],
-            action_dim=action.shape[1],
-            action_lower=action.min(axis=0),
-            action_upper=action.max(axis=0),
-            hidden_dim=hidden_dim,
-        )
-
-        network_context: np.ndarray = Standardizer(context).transform(context)
-        evaluate = PrescriptorEvaluator(network, network_context, context, surrogate.predict, maximize)
-
-        bounds: np.ndarray = np.full(network.num_weights, self.WEIGHT_BOUND)
         started: float = time.time()
-        result: dict[str, np.ndarray] = Nsga2.evolve(
-            evaluate,
-            -bounds,
-            bounds,
+        network, network_context, result = self.search(
+            arrays,
+            maximize,
+            surrogate,
             population_size=population_size,
             generations=generations,
+            hidden_dim=hidden_dim,
             seed=seed,
         )
         elapsed: float = time.time() - started
@@ -175,6 +165,63 @@ class EvolvePrescriptors(CodedTool):
             },
             indent=2,
         )
+
+    # The search takes the problem, the model and four independent search settings.
+    # pylint: disable=too-many-arguments
+    @staticmethod
+    def search(
+        arrays: dict[str, np.ndarray],
+        maximize: list[bool],
+        surrogate: QuadraticSurrogate,
+        *,
+        population_size: int = DEFAULT_POPULATION,
+        generations: int = DEFAULT_GENERATIONS,
+        hidden_dim: int = DEFAULT_HIDDEN_DIM,
+        seed: int = DEFAULT_SEED,
+    ) -> tuple[PrescriptorNetwork, np.ndarray, dict[str, np.ndarray]]:
+        """
+        Evolve prescriptor policies against the surrogate with NSGA-II.
+
+        Public so tests can compare the search, wired exactly as the tool runs it,
+        against a baseline of fixed actions.
+
+        :param arrays: The "context" and "action" arrays from TrainingArrays.build.
+        :param maximize: One flag per outcome; True where larger is better.
+        :param surrogate: The fitted model that scores each policy's actions.
+        :param population_size: Candidate policies carried between generations.
+        :param generations: Number of generations to run.
+        :param hidden_dim: Width of the prescriptor's hidden layer.
+        :param seed: Random seed; the same seed reproduces a run exactly.
+        :return: Tuple of (the prescriptor network, the standardized contexts it reads,
+            and the Nsga2.evolve result).
+        """
+        context: np.ndarray = arrays.get("context")
+        action: np.ndarray = arrays.get("action")
+
+        # Actions are held inside the range the historical data actually covers.
+        # Outside it the surrogate is extrapolating, and its predictions there are
+        # a property of the model rather than evidence about the world.
+        network = PrescriptorNetwork(
+            context_dim=context.shape[1],
+            action_dim=action.shape[1],
+            action_lower=action.min(axis=0),
+            action_upper=action.max(axis=0),
+            hidden_dim=hidden_dim,
+        )
+
+        network_context: np.ndarray = Standardizer(context).transform(context)
+        evaluate = PrescriptorEvaluator(network, network_context, context, surrogate.predict, maximize)
+
+        bounds: np.ndarray = np.full(network.num_weights, EvolvePrescriptors.WEIGHT_BOUND)
+        result: dict[str, np.ndarray] = Nsga2.evolve(
+            evaluate,
+            -bounds,
+            bounds,
+            population_size=population_size,
+            generations=generations,
+            seed=seed,
+        )
+        return network, network_context, result
 
     async def async_invoke(self, args: dict[str, Any], sly_data: dict[str, Any]) -> str:
         """

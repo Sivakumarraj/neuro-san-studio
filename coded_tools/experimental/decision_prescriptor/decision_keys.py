@@ -31,7 +31,7 @@ class DecisionKeys:
     DATASET: str = "decision_dataset"
     # Which fields are context, action and outcome, written by LoadDecisionProblem.
     SPEC: str = "decision_spec"
-    # The fitted RidgeSurrogate, written by FitSurrogate.
+    # The fitted QuadraticSurrogate, written by FitSurrogate.
     SURROGATE: str = "decision_surrogate"
     # The evolved front and its history, written by EvolvePrescriptors.
     RESULT: str = "decision_result"

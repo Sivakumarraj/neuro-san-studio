@@ -55,9 +55,11 @@ Evolution needs to score hundreds of thousands of candidate strategies. You cann
 business, so you try them on a model fitted from what already happened. That model is the
 **surrogate**, and it is the reason the search is affordable at all.
 
-The surrogate here is **ridge regression**, solved in closed form:
+The surrogate here is **ridge regression on a second-order expansion** of the inputs, solved in closed
+form:
 
 ```text
+features     = [x, xᵢ·xⱼ for every pair i ≤ j]     x = standardized context and action
 coefficients = (XᵀX + αI)⁻¹ XᵀY
 ```
 
@@ -66,8 +68,17 @@ random seed to explain away, and stays finite when features are collinear — wh
 small decision datasets. The intercept is left unpenalized, since shrinking it would bias every
 prediction.
 
-The R² per outcome is reported back to the user rather than hidden. **A prescriptor evolved against a
-weak surrogate has optimized a bad map of the world**, and the front will look exactly as precise
+The products are not decoration. The search scores a policy by averaging the surrogate's predictions
+over every historical context. If the surrogate were additive in context and action, that average would
+depend on the policy only through its mean action, so every policy would score exactly like one fixed
+action and evolving a policy would buy nothing. A context × action product is what lets the best action
+depend on the situation; a square lets a decision show diminishing returns.
+
+The R² per outcome is reported back to the user rather than hidden, and it is the **held-out** R²: each
+record is predicted by a model fitted without it. Ridge gives that in closed form from each record's
+leverage, as residualᵢ / (1 − hᵢᵢ), so nothing is refitted. In-sample R² is the wrong number here: with
+nearly as many model terms as records it looks strong even on pure noise. **A prescriptor evolved against
+a weak surrogate has optimized a bad map of the world**, and the front will look exactly as precise
 either way. If any outcome scores below 0.5, the front man is instructed to say so plainly.
 
 ### Why evolve the policy
@@ -78,8 +89,11 @@ for a given context, which is precisely why the problem exists. So the entire we
 and a candidate is judged by the outcomes the surrogate predicts when its actions are applied across
 every historical context.
 
-Evolving a *policy* rather than a fixed action matters: the result responds to circumstances, so a new
-situation gets its own action instead of whatever suited the average case.
+Evolving a *policy* rather than a fixed action matters only when the best action depends on the
+context, which is what the surrogate's interaction terms allow. Then the result responds to
+circumstances, so a new situation gets its own action instead of whatever suited the average case. The
+tests check this directly: on the bundled example the evolved front must beat a dense grid of fixed
+actions, both on the surrogate and on the example's noise-free ground truth.
 
 Actions are squashed through a logistic into the range the historical data actually covers. Outside
 that range the surrogate is extrapolating, and its predictions there describe the model rather than the
@@ -206,14 +220,27 @@ It models delivery staffing across a portfolio of engagements, with two conflict
 
 An optimizer that returned a single answer here would be hiding one of those exchanges.
 
-A typical run with the default settings fits the surrogate at R² ≈ 0.97 on all three outcomes and finds
-around 1,200 non-dominated strategies in about ten seconds, spanning roughly:
+It also has two interactions built in, so that the best decision depends on the engagement:
+
+* senior staff cut delivery risk far more on urgent engagements than on calm ones;
+* automation pays off on large accounts, while on small ones its set-up costs more margin than it saves.
+
+Spreading senior staff evenly or automating everywhere is therefore beaten by a policy that targets them.
+That advantage is written into the generator; it is not a discovery about real delivery work.
+
+A typical run with the default settings fits the surrogate at a held-out R² of about 0.96 to 0.97 on the
+three outcomes, where an additive model without interaction terms reaches only 0.84 on delivery risk. It
+then finds around 750 non-dominated strategies in about seven seconds, spanning roughly:
 
 | Outcome | Range across the front |
 |---|---|
-| margin_pct | 11.0 → 29.7 |
-| delivery_risk | 0.21 → 0.63 |
-| time_to_value_weeks | 11.1 → 22.5 |
+| margin_pct | 11.4 → 27.3 |
+| delivery_risk | 0.32 → 0.63 |
+| time_to_value_weeks | 11.3 → 21.6 |
+
+Measured against a 41 × 41 grid of fixed actions, each applied to every engagement, the evolved front
+dominates 61% of the best fixed actions outright on the surrogate, and 58% on the example's noise-free
+ground truth. Its hypervolume is 1.3% to 1.4% larger: the advantage is real, and modest.
 
 ### Use your own data
 
@@ -247,10 +274,14 @@ pytest tests/coded_tools/experimental/decision_prescriptor/ -v
 
 The suite avoids asserting on any particular solution, since the search is stochastic. It pins down
 what is exactly determined instead: the dominance relation, the front partition, hypervolume on shapes
-whose area can be worked out by hand, ridge regression against an independently written closed form,
-and convergence against **ZDT1**, a benchmark whose true front is known analytically to be
-`f2 = 1 - √f1`. The four coded tools are also run end to end through `sly_data`, the way the front man
-drives them.
+whose area can be worked out by hand, ridge regression and its leave-one-out R² against independently
+written refits, and convergence against **ZDT1**, a benchmark whose true front is known analytically to
+be `f2 = 1 - √f1`. The four coded tools are also run end to end through `sly_data`, the way the front
+man drives them.
+
+One question is asked of the whole method rather than its parts: does evolving a policy beat simply
+picking one fixed action? `test_prescription_baseline.py` runs the default search on the bundled example
+and requires its front to beat the fixed-action grid above, on the surrogate and on the ground truth.
 
 An integration fixture runs the whole network against a live LLM:
 
@@ -268,10 +299,12 @@ one class per file:
 
 | File | Role |
 |---|---|
-| `load_decision_problem.py`, `fit_surrogate.py`, `evolve_prescriptors.py`, `render_pareto_report.py` | The four coded tools |
+| `load_decision_problem.py`, `fit_surrogate.py` | Coded tools for stages 1 and 2 |
+| `evolve_prescriptors.py`, `render_pareto_report.py` | Coded tools for stages 3 and 4 |
 | `decision_keys.py` | The `sly_data` keys the tools share |
-| `ridge_surrogate.py`, `training_arrays.py` | The predictor and the records it is fitted from |
-| `prescriptor_network.py`, `standardizer.py`, `prescriptor_evaluator.py` | The evolved policy and its objective function |
+| `quadratic_surrogate.py`, `ridge_surrogate.py` | The predictor: second-order terms, then ridge regression |
+| `training_arrays.py` | The records the predictor is fitted from |
+| `prescriptor_network.py`, `standardizer.py`, `prescriptor_evaluator.py` | The evolved policy and how it is scored |
 | `nsga2.py`, `pareto_ranking.py`, `genetic_operators.py`, `hypervolume.py` | The search |
 | `svg_charts.py`, `linear_scale.py`, `pareto_report.py` | The HTML report |
 | `sample_data.py` | The synthetic example |

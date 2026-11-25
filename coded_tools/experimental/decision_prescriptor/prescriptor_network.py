@@ -28,9 +28,12 @@ class PrescriptorNetwork:
     evolved, and a candidate is judged by the outcomes the surrogate predicts when
     its actions are applied across the dataset (see PrescriptorEvaluator).
 
-    Evolving a policy rather than a fixed action matters. The result is a rule that
-    responds to circumstances, so a new situation gets its own action rather than a
-    lookup of whatever suited the average case.
+    Evolving a policy rather than a fixed action matters only when the surrogate lets
+    the effect of an action depend on the context. QuadraticSurrogate does, through its
+    context x action products. Under a model additive in the two, every policy would
+    score exactly like its mean action. When it holds, the result is a rule that
+    responds to circumstances, so a new situation gets its own action rather than
+    whatever suited the average case.
 
     The network is intentionally tiny. Evolution searches the weight space
     directly, so every added weight enlarges the search space, and a small
